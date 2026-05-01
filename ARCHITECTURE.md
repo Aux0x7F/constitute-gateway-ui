@@ -7,8 +7,9 @@
 - Direct entry is canonical; users should not need to visit `constitute-account` manually before the gateway surface can resolve account/session/grant state.
 
 ## Planned
-- `constitute-security` and `constitute-storage` will project deeper host capability state into this surface later.
+- `constitute-logging`, `constitute-cybersec`, and `constitute-storage` will project deeper host capability state into this surface later.
 - Gateway UI should surface those capabilities as host/service posture, while implementation remains in dedicated capability services.
+- `constitute-physec` is a future app surface for Physical Security and should consume gateway/NVR/Zigbee projections rather than live inside Gateway UI.
 
 ## Retired
 - Gateway management living inside the `constitute` account shell is retired.

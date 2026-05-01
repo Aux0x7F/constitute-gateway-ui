@@ -73,8 +73,8 @@ const GATEWAY_MAIN_HTML = `
         <section class="cuPanel">
           <div class="cuPanelHeader">
             <div>
-              <h2 class="cuPanelTitle">Security</h2>
-              <p class="cuPanelHint">Host capability projection will land here once constitute-security is active.</p>
+              <h2 class="cuPanelTitle">Cybersecurity</h2>
+              <p class="cuPanelHint">Host cybersecurity projection will land here once constitute-cybersec is active.</p>
             </div>
           </div>
           <div id="securitySummary" class="gatewayCardRows"></div>
@@ -116,7 +116,7 @@ const shell = renderFirstPartyShell(app, {
     { id: "gateways", label: "Gateways", active: true },
     { id: "services", label: "Hosted Services" },
     { id: "network", label: "Network" },
-    { id: "security", label: "Security" },
+    { id: "security", label: "Cybersecurity" },
     { id: "runtime", label: "Runtime / Updates" },
   ],
   mainHtml: GATEWAY_MAIN_HTML,
@@ -750,8 +750,8 @@ function renderNetworkView(records) {
 
 function renderSecurityView(records) {
   renderRows(securitySummaryEl, [
-    { label: "Current posture", value: "Shared chrome active; host security service not yet projected.", tone: "warn" },
-    { label: "Future authority", value: "constitute-security", tone: "neutral" },
+    { label: "Current posture", value: "Shared chrome active; cybersecurity service not yet projected.", tone: "warn" },
+    { label: "Future authority", value: "constitute-cybersec", tone: "neutral" },
   ]);
 }
 
