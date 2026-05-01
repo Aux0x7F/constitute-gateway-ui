@@ -1,0 +1,187 @@
+.booting {
+  overflow: hidden;
+}
+
+#bootSplash {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(10, 16, 28, 0.84);
+  backdrop-filter: blur(12px);
+  z-index: 30;
+}
+
+.bootSplashCard {
+  display: grid;
+  gap: 0.8rem;
+  min-width: 18rem;
+  padding: 1.5rem 1.75rem;
+  border-radius: 24px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.92);
+  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.32);
+  color: #e5eefb;
+  text-align: center;
+}
+
+.bootSpinner {
+  width: 2rem;
+  height: 2rem;
+  margin: 0 auto;
+  border-radius: 999px;
+  border: 3px solid rgba(148, 163, 184, 0.25);
+  border-top-color: #f8fafc;
+  animation: gatewaySpin 0.85s linear infinite;
+}
+
+.bootSplashTitle {
+  margin: 0;
+  font-weight: 700;
+}
+
+.bootSplashStatus {
+  margin: 0;
+  color: #9fb0c8;
+  font-size: 0.95rem;
+}
+
+.gatewayMain {
+  display: grid;
+  gap: 1rem;
+}
+
+.gatewayView.hidden {
+  display: none;
+}
+
+.gatewayGrid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+}
+
+.gatewaySectionStack {
+  display: grid;
+  gap: 1rem;
+}
+
+.gatewayEmpty {
+  padding: 1.1rem 1.15rem;
+  border: 1px dashed rgba(148, 163, 184, 0.28);
+  border-radius: 18px;
+  color: #9fb0c8;
+}
+
+.gatewayList {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+
+.gatewayListItem {
+  display: grid;
+  gap: 0.7rem;
+  padding: 1rem 1.05rem;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.66);
+}
+
+.gatewayListHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.gatewayListTitle {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.gatewayListMeta {
+  display: grid;
+  gap: 0.3rem;
+  color: #9fb0c8;
+  font-size: 0.92rem;
+}
+
+.gatewayScopePill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  background: rgba(51, 65, 85, 0.9);
+  color: #dbe6f8;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.gatewayScopePill.owned {
+  background: rgba(29, 78, 216, 0.3);
+}
+
+.gatewayScopePill.shared {
+  background: rgba(22, 163, 74, 0.25);
+}
+
+.gatewayScopePill.discoverable {
+  background: rgba(217, 119, 6, 0.25);
+}
+
+.gatewayActionStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.gatewayActionStrip button {
+  min-height: 2.2rem;
+}
+
+.gatewayCardRows {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.gatewayCardRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  color: #cbd8ea;
+}
+
+.gatewayCardRowLabel {
+  color: #9fb0c8;
+}
+
+.gatewayStatusTone-good {
+  color: #86efac;
+}
+
+.gatewayStatusTone-warn {
+  color: #fcd34d;
+}
+
+.gatewayStatusTone-bad {
+  color: #fca5a5;
+}
+
+.gatewayStatusTone-neutral {
+  color: #cbd8ea;
+}
+
+.gatewayInlineStatus {
+  min-height: 1.1rem;
+  color: #9fb0c8;
+  font-size: 0.92rem;
+}
+
+@keyframes gatewaySpin {
+  to {
+    transform: rotate(360deg);
+  }
+}

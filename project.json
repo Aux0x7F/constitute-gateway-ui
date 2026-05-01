@@ -1,0 +1,30 @@
+{
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "name": "constitute-gateway-ui",
+  "projectType": "application",
+  "root": "constitute-gateway-ui",
+  "sourceRoot": "constitute-gateway-ui/src",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "constitute-gateway-ui",
+        "command": "npm run build"
+      }
+    },
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "constitute-gateway-ui",
+        "command": "npm run dev"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "constitute-gateway-ui",
+        "command": "npm run test"
+      }
+    }
+  }
+}

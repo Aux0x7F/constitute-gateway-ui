@@ -1,0 +1,10 @@
+{
+  "id": "constitute-gateway-ui",
+  "label": "Gateway",
+  "description": "Dedicated gateway management surface",
+  "entry": "dist/index.html",
+  "capabilities": [
+    "gateway"
+  ],
+  "version": "0.1.0"
+}
