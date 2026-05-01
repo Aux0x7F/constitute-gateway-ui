@@ -10,8 +10,8 @@
     "test": "node --test tests/**/*.test.js"
   },
   "dependencies": {
-    "constitute-protocol": "file:../constitute-protocol",
-    "constitute-ui": "file:../constitute-ui"
+    "constitute-protocol": "https://github.com/Aux0x7F/constitute-protocol/archive/11eb917d965712d5e2571f2effa5730c7102f317.tar.gz",
+    "constitute-ui": "https://github.com/Aux0x7F/constitute-ui/archive/9e2ced658de91cfc539cbad671971f4303281c03.tar.gz"
   },
   "devDependencies": {
     "vite": "^6.2.0"
