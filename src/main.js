@@ -6,6 +6,7 @@ import {
   renderFirstPartyShell,
   setConnectionStateText,
 } from "constitute-ui";
+import { BROKER } from "constitute-protocol";
 
 const RUNTIME_WORKER_VERSION = Object.freeze({ major: 2, minor: 9 });
 const RUNTIME_WORKER_BUILD_ID = `runtime-${RUNTIME_WORKER_VERSION.major}.${RUNTIME_WORKER_VERSION.minor}`;
@@ -395,7 +396,10 @@ function absorbRuntimeSnapshot(snapshot) {
 function attachRuntime() {
   if (typeof SharedWorker === "undefined") return null;
   try {
-    const worker = new SharedWorker(runtimeWorkerUrl());
+    const worker = new SharedWorker(runtimeWorkerUrl(), {
+      type: "module",
+      name: `constitute-account-runtime-${RUNTIME_WORKER_BUILD_ID}`,
+    });
     const port = worker.port;
     port.start();
     port.onmessage = (event) => {
@@ -642,7 +646,7 @@ function renderGatewayList(records) {
     actions.className = "gatewayActionStrip";
 
     const openNvrButton = actionButton(nvrRecord ? "Open Security Cameras" : "Open Security Cameras", () => {
-      void launchSecurityCameras(nvrRecord || {
+      void openSecurityCameras(nvrRecord || {
         devicePk: String(nvrRecord?.devicePk || "").trim(),
         hostGatewayPk: gatewayPk,
         service: "nvr",
@@ -699,10 +703,10 @@ function renderServiceList(records) {
     const actions = document.createElement("div");
     actions.className = "gatewayActionStrip";
     actions.appendChild(actionButton("Open Live", () => {
-      void launchSecurityCameras(record, {});
+      void openSecurityCameras(record, {});
     }));
     actions.appendChild(actionButton("Open Settings", () => {
-      void launchSecurityCameras(record, { activity: "settings" });
+      void openSecurityCameras(record, { activity: "settings" });
     }));
     row.appendChild(actions);
     serviceListEl.appendChild(row);
@@ -870,13 +874,13 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-async function launchSecurityCameras(record, opts = {}) {
+async function openSecurityCameras(record, opts = {}) {
   if (!runtimeReady) {
     addNotification("warn", "Runtime unavailable", "Open constitute-account to hydrate the shared runtime first.");
     return;
   }
   try {
-    const launch = await runtimeBrokerCall("gateway.launch.request", {
+    const access = await runtimeBrokerCall(BROKER.SERVICE_ACCESS_REQUEST, {
       payload: {
         record,
         options: {
@@ -884,28 +888,28 @@ async function launchSecurityCameras(record, opts = {}) {
           capability: "nvr.view",
         },
       },
-    }, GATEWAY_ACTION_TIMEOUT_MS, "managed launch");
-    const launchId = randomOpaqueId("launch");
+    }, GATEWAY_ACTION_TIMEOUT_MS, "service access");
+    const contextId = randomOpaqueId("service-access");
     const context = {
-      launchId,
+      contextId,
       app: "nvr",
       repo: "constitute-nvr-ui",
       identityId: String(runtimeSnapshot?.shell?.identity?.identityId || "").trim(),
-      devicePk: String(launch?.servicePk || record?.devicePk || record?.pk || "").trim(),
-      gatewayPk: String(launch?.gatewayPk || record?.hostGatewayPk || record?.devicePk || record?.pk || "").trim(),
-      servicePk: String(launch?.servicePk || record?.devicePk || record?.pk || "").trim(),
+      devicePk: String(access?.servicePk || record?.devicePk || record?.pk || "").trim(),
+      gatewayPk: String(access?.gatewayPk || record?.hostGatewayPk || record?.devicePk || record?.pk || "").trim(),
+      servicePk: String(access?.servicePk || record?.devicePk || record?.pk || "").trim(),
       service: "nvr",
-      launchToken: String(launch?.launchToken || "").trim(),
-      display: launch?.display ?? {},
+      serviceCapability: String(access?.serviceCapability || "").trim(),
+      display: access?.display ?? {},
       createdAt: Date.now(),
-      expiresAt: Number(launch?.expiresAt || (Date.now() + (2 * 60 * 1000))),
+      expiresAt: Number(access?.expiresAt || (Date.now() + (2 * 60 * 1000))),
     };
-    await runtimeCall("launchContext.put", { context }, RUNTIME_WRITE_TIMEOUT_MS);
-    const url = buildManagedSurfaceUrl("constitute-nvr-ui", launchId, opts);
+    await runtimeCall(BROKER.SERVICE_ACCESS_CONTEXT_PUT, { context }, RUNTIME_WRITE_TIMEOUT_MS);
+    const url = buildManagedSurfaceUrl("constitute-nvr-ui", contextId, opts);
     window.open(url, "_blank", "noopener,noreferrer");
-    addNotification("good", "Security Cameras opened", "Managed launch context was published to the shared runtime.");
+    addNotification("good", "Security Cameras opened", "Managed service access context was published to the shared runtime.");
   } catch (error) {
-    addNotification("bad", "Security Cameras launch failed", String(error?.message || error));
+    addNotification("bad", "Security Cameras service access failed", String(error?.message || error));
   }
 }
 
@@ -940,10 +944,10 @@ async function requestZoneSync(record) {
   }
 }
 
-function buildManagedSurfaceUrl(repo, launchId, opts = {}) {
+function buildManagedSurfaceUrl(repo, contextId, opts = {}) {
   const target = new URL(`/${String(repo || "").trim()}/`, window.location.origin);
   const params = new URLSearchParams();
-  params.set("launch", String(launchId || "").trim());
+  params.set("serviceAccess", String(contextId || "").trim());
   const activity = String(opts?.activity || "").trim();
   const settingsTab = String(opts?.settingsTab || "").trim();
   const camera = String(opts?.camera || "").trim();
