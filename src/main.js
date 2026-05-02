@@ -38,7 +38,7 @@ const GATEWAY_MAIN_HTML = `
         <div class="cuPanelHeader">
           <div>
             <h2 class="cuPanelTitle">Hosted Services</h2>
-            <p class="cuPanelHint">Gateway-hosted services rendered from the shared managed-appliance projection.</p>
+            <p class="cuPanelHint">Installed gateway services with health, configuration, and optional app actions.</p>
           </div>
         </div>
         <div id="serviceStatus" class="gatewayInlineStatus"></div>
@@ -539,16 +539,98 @@ function isServiceRecord(record) {
 function hostedNvrForGateway(gatewayRecord, records) {
   const gatewayPk = String(gatewayRecord?.devicePk || gatewayRecord?.pk || "").trim();
   if (!gatewayPk) return null;
-  return records.find((record) => {
+  const serviceRecord = records.find((record) => {
     if (!isServiceRecord(record)) return false;
     if (normalizeRole(record?.service || "") !== "nvr") return false;
     return String(record?.hostGatewayPk || record?.host_gateway_pk || "").trim() === gatewayPk;
-  }) || null;
+  });
+  if (serviceRecord) return serviceRecord;
+  const embedded = normalizedArray(gatewayRecord?.hostedServices || gatewayRecord?.hosted_services)
+    .find((service) => normalizeRole(service?.service || service?.slug || service?.name || service) === "nvr");
+  if (!embedded || typeof embedded !== "object") return null;
+  return {
+    ...embedded,
+    __scope: gatewayRecord.__scope,
+    hostGatewayPk: String(embedded.hostGatewayPk || embedded.host_gateway_pk || gatewayPk).trim(),
+  };
 }
 
 function gatewayReportsNvrService(gatewayRecord) {
   return normalizedArray(gatewayRecord?.hostedServices || gatewayRecord?.hosted_services)
     .some((service) => normalizeRole(service?.service || service?.slug || service?.name || service) === "nvr");
+}
+
+function serviceSlug(record) {
+  return normalizeRole(record?.service || record?.slug || record?.name || "");
+}
+
+function serviceStatus(record) {
+  const direct = String(record?.status || "").trim();
+  if (direct) return direct;
+  const healthStatus = String(record?.facts?.health?.status || "").trim();
+  if (healthStatus) return healthStatus === "ok" ? "online" : healthStatus;
+  return freshnessLabel(record);
+}
+
+function installedServicesForGateway(gatewayRecord, records) {
+  const gatewayPk = String(gatewayRecord?.devicePk || gatewayRecord?.pk || "").trim();
+  if (!gatewayPk) return [];
+  return collectInstalledServices(records)
+    .filter((record) => String(record?.hostGatewayPk || record?.host_gateway_pk || "").trim() === gatewayPk);
+}
+
+function mergeServiceRecord(existing, incoming) {
+  if (!existing) return incoming;
+  return {
+    ...existing,
+    ...Object.fromEntries(Object.entries(incoming).filter(([, value]) => {
+      if (value === undefined || value === null) return false;
+      if (typeof value === "string" && !value.trim()) return false;
+      return true;
+    })),
+    facts: {
+      ...(existing.facts && typeof existing.facts === "object" ? existing.facts : {}),
+      ...(incoming.facts && typeof incoming.facts === "object" ? incoming.facts : {}),
+    },
+    __scope: existing.__scope || incoming.__scope,
+  };
+}
+
+function collectInstalledServices(records) {
+  const byKey = new Map();
+  const add = (record, gatewayRecord = null) => {
+    if (!record || typeof record !== "object") return;
+    const service = serviceSlug(record);
+    if (!service) return;
+    const hostGatewayPk = String(
+      record.hostGatewayPk
+      || record.host_gateway_pk
+      || gatewayRecord?.devicePk
+      || gatewayRecord?.pk
+      || "",
+    ).trim();
+    const devicePk = String(record.devicePk || record.pk || record.servicePk || record.service_pk || "").trim();
+    const key = `${hostGatewayPk}:${service}:${devicePk || service}`;
+    const normalized = {
+      ...record,
+      devicePk,
+      service,
+      hostGatewayPk,
+      __scope: record.__scope || gatewayRecord?.__scope,
+      __hostGatewayLabel: gatewayRecord ? gatewayTitle(gatewayRecord) : "",
+    };
+    byKey.set(key, mergeServiceRecord(byKey.get(key), normalized));
+  };
+  for (const record of records) {
+    if (isServiceRecord(record)) add(record);
+  }
+  for (const gateway of records.filter((record) => isGatewayRecord(record))) {
+    for (const service of normalizedArray(gateway?.hostedServices || gateway?.hosted_services)) {
+      if (service && typeof service === "object") add(service, gateway);
+    }
+  }
+  return Array.from(byKey.values())
+    .sort((a, b) => `${serviceSlug(a)}:${serviceTitle(a)}`.localeCompare(`${serviceSlug(b)}:${serviceTitle(b)}`));
 }
 
 function freshnessLabel(record) {
@@ -627,6 +709,7 @@ function renderGatewayList(records) {
   for (const record of gateways) {
     const gatewayPk = String(record?.devicePk || record?.pk || "").trim();
     const nvrRecord = hostedNvrForGateway(record, records);
+    const installedServices = installedServicesForGateway(record, records);
     const row = document.createElement("article");
     row.className = "gatewayListItem";
     row.innerHTML = `
@@ -636,7 +719,7 @@ function renderGatewayList(records) {
           <div class="gatewayListMeta">
             <div>id ${escapeHtml(shortPk(gatewayPk))}</div>
             <div>freshness ${escapeHtml(freshnessLabel(record))}</div>
-            <div>service count ${escapeHtml(String(normalizedArray(record?.hostedServices || record?.hosted_services).length || 0))}</div>
+            <div>installed services ${escapeHtml(String(installedServices.length || 0))}</div>
           </div>
         </div>
         ${scopePill(record.__scope)}
@@ -674,16 +757,32 @@ function renderGatewayList(records) {
 
 function renderServiceList(records) {
   serviceListEl.innerHTML = "";
-  const services = records.filter((record) => isServiceRecord(record));
+  const services = collectInstalledServices(records);
   serviceStatusEl.textContent = services.length > 0
-    ? `${services.length} hosted service${services.length === 1 ? "" : "s"} in the shared runtime projection.`
-    : "No hosted services are currently projected.";
+    ? `${services.length} installed service${services.length === 1 ? "" : "s"} projected from gateway inventory.`
+    : "No installed services are currently projected.";
   if (services.length === 0) {
-    serviceListEl.innerHTML = `<article class="gatewayEmpty">No hosted services are currently projected.</article>`;
+    serviceListEl.innerHTML = `<article class="gatewayEmpty">No installed services are currently projected.</article>`;
     return;
   }
   for (const record of services) {
     const servicePk = String(record?.devicePk || record?.pk || "").trim();
+    const service = serviceSlug(record);
+    const status = serviceStatus(record);
+    const facts = record?.facts && typeof record.facts === "object" ? record.facts : {};
+    const health = facts?.health && typeof facts.health === "object" ? facts.health : {};
+    const factRows = service === "storage"
+      ? [
+          `objects ${Number(health.objects || 0)}`,
+          `chunks ${Number(health.chunks || 0)}`,
+          `index shards ${Number(health.indexShards || 0)}`,
+          `pins ${Number(health.pinLeases || 0)}`,
+        ]
+      : [
+          Number(record?.cameraCount || record?.camera_count || 0) > 0
+            ? `camera sources ${Number(record?.cameraCount || record?.camera_count || 0)}`
+            : "",
+        ].filter(Boolean);
     const row = document.createElement("article");
     row.className = "gatewayListItem";
     row.innerHTML = `
@@ -692,9 +791,11 @@ function renderServiceList(records) {
           <h3 class="gatewayListTitle">${escapeHtml(serviceTitle(record))}</h3>
           <div class="gatewayListMeta">
             <div>id ${escapeHtml(shortPk(servicePk))}</div>
-            <div>service ${escapeHtml(normalizeRole(record?.service || "") || "unknown")}</div>
-            <div>host gateway ${escapeHtml(shortPk(record?.hostGatewayPk || record?.host_gateway_pk || ""))}</div>
+            <div>service ${escapeHtml(service || "unknown")}</div>
+            <div>status <span class="gatewayStatusTone-${escapeHtml(toneForLabel(status))}">${escapeHtml(status)}</span></div>
+            <div>host gateway ${escapeHtml(record.__hostGatewayLabel || shortPk(record?.hostGatewayPk || record?.host_gateway_pk || ""))}</div>
             <div>freshness ${escapeHtml(freshnessLabel(record))}</div>
+            ${factRows.map((fact) => `<div>${escapeHtml(fact)}</div>`).join("")}
           </div>
         </div>
         ${scopePill(record.__scope)}
@@ -702,13 +803,15 @@ function renderServiceList(records) {
     `;
     const actions = document.createElement("div");
     actions.className = "gatewayActionStrip";
-    actions.appendChild(actionButton("Open Live", () => {
-      void openSecurityCameras(record, {});
-    }));
-    actions.appendChild(actionButton("Open Settings", () => {
-      void openSecurityCameras(record, { activity: "settings" });
-    }));
-    row.appendChild(actions);
+    if (service === "nvr") {
+      actions.appendChild(actionButton("Open Security Cameras", () => {
+        void openSecurityCameras(record, {});
+      }, !servicePk));
+      actions.appendChild(actionButton("Camera Settings", () => {
+        void openSecurityCameras(record, { activity: "settings" });
+      }, !servicePk));
+    }
+    if (actions.childElementCount > 0) row.appendChild(actions);
     serviceListEl.appendChild(row);
   }
 }
@@ -781,7 +884,7 @@ function renderRuntimeView(records) {
 
 function toneForLabel(value) {
   const raw = String(value || "").trim().toLowerCase();
-  if (raw.includes("connected") || raw.includes("live") || raw.includes("open") || raw === "linked") return "good";
+  if (raw.includes("connected") || raw.includes("live") || raw.includes("open") || raw.includes("online") || raw === "ok" || raw === "linked") return "good";
   if (raw.includes("offline") || raw.includes("error") || raw.includes("failed") || raw.includes("unlinked")) return "bad";
   if (raw.includes("loading") || raw.includes("unknown") || raw.includes("stale")) return "warn";
   return "neutral";

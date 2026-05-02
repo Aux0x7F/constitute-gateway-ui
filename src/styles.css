@@ -180,6 +180,10 @@
   font-size: 0.92rem;
 }
 
+.gatewayInlineStatus:not(.hidden) {
+  margin-top: 0.35rem;
+}
+
 @keyframes gatewaySpin {
   to {
     transform: rotate(360deg);
