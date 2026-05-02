@@ -17,11 +17,12 @@
 - Hosted Services is the installed-service inventory for a gateway host.
 - The section focuses on service health, freshness, version, host gateway, and configuration posture.
 - Launch actions are optional and service-specific; NVR exposes Security Cameras actions, while storage can appear as a non-launcher service with health/config facts.
+- Logging appears as an installed hosted service with health/config facts and an optional open action for `constitute-logging-ui`.
 - Gateway UI should merge standalone service records and gateway `hostedServices` summaries into one installed-service view without duplicating rows.
 
 ## Planned
-- `constitute-logging` and `constitute-cybersec` will project deeper host capability state into this surface later.
-- Gateway UI should surface those capabilities as host/service posture, while implementation remains in dedicated capability services.
+- `constitute-cybersec` will project deeper host capability state into this surface later.
+- Gateway UI should surface host/service posture, while implementation remains in dedicated capability services.
 - `constitute-physec` is a future app surface for Physical Security and should consume gateway/NVR/Zigbee projections rather than live inside Gateway UI.
 
 ## Retired

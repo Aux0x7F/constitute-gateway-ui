@@ -778,6 +778,12 @@ function renderServiceList(records) {
           `index shards ${Number(health.indexShards || 0)}`,
           `pins ${Number(health.pinLeases || 0)}`,
         ]
+      : service === "logging"
+        ? [
+            `events ${Number(health.events || 0)}`,
+            `producers ${Number(health.producers || 0)}`,
+            `storage ${String(health.storageStatus || "unknown")}`,
+          ]
       : [
           Number(record?.cameraCount || record?.camera_count || 0) > 0
             ? `camera sources ${Number(record?.cameraCount || record?.camera_count || 0)}`
@@ -810,6 +816,10 @@ function renderServiceList(records) {
       actions.appendChild(actionButton("Camera Settings", () => {
         void openSecurityCameras(record, { activity: "settings" });
       }, !servicePk));
+    } else if (service === "logging") {
+      actions.appendChild(actionButton("Open Logging", () => {
+        openLogging(record);
+      }));
     }
     if (actions.childElementCount > 0) row.appendChild(actions);
     serviceListEl.appendChild(row);
@@ -1014,6 +1024,14 @@ async function openSecurityCameras(record, opts = {}) {
   } catch (error) {
     addNotification("bad", "Security Cameras service access failed", String(error?.message || error));
   }
+}
+
+function openLogging(record) {
+  const apiBaseUrl = String(record?.facts?.apiBaseUrl || "").trim();
+  const target = new URL("/constitute-logging-ui/", window.location.origin);
+  if (apiBaseUrl) target.searchParams.set("api", apiBaseUrl);
+  window.open(target.toString(), "_blank", "noopener,noreferrer");
+  addNotification("good", "Logging opened", "Opened the logging operator console.");
 }
 
 async function requestGatewayInstall(record) {
