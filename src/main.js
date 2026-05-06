@@ -8,7 +8,7 @@ import {
 } from "constitute-ui";
 import { BROKER } from "constitute-protocol";
 
-const RUNTIME_WORKER_VERSION = Object.freeze({ major: 2, minor: 9 });
+const RUNTIME_WORKER_VERSION = Object.freeze({ major: 2, minor: 12 });
 const RUNTIME_WORKER_BUILD_ID = `runtime-${RUNTIME_WORKER_VERSION.major}.${RUNTIME_WORKER_VERSION.minor}`;
 const RUNTIME_ATTACH_TIMEOUT_MS = 5_000;
 const RUNTIME_WRITE_TIMEOUT_MS = 10_000;
@@ -818,8 +818,8 @@ function renderServiceList(records) {
       }, !servicePk));
     } else if (service === "logging") {
       actions.appendChild(actionButton("Open Logging", () => {
-        openLogging(record);
-      }));
+        void openLogging(record);
+      }, !servicePk));
     }
     if (actions.childElementCount > 0) row.appendChild(actions);
     serviceListEl.appendChild(row);
@@ -1026,12 +1026,43 @@ async function openSecurityCameras(record, opts = {}) {
   }
 }
 
-function openLogging(record) {
-  const apiBaseUrl = String(record?.facts?.apiBaseUrl || "").trim();
-  const target = new URL("/constitute-logging-ui/", window.location.origin);
-  if (apiBaseUrl) target.searchParams.set("api", apiBaseUrl);
-  window.open(target.toString(), "_blank", "noopener,noreferrer");
-  addNotification("good", "Logging opened", "Opened the logging operator console.");
+async function openLogging(record) {
+  if (!runtimeReady) {
+    addNotification("warn", "Runtime unavailable", "Open constitute-account to hydrate the shared runtime first.");
+    return;
+  }
+  try {
+    const access = await runtimeBrokerCall(BROKER.SERVICE_ACCESS_REQUEST, {
+      payload: {
+        record,
+        options: {
+          service: "logging",
+          capability: "logging.view",
+        },
+      },
+    }, GATEWAY_ACTION_TIMEOUT_MS, "logging service access");
+    const contextId = randomOpaqueId("service-access");
+    const context = {
+      contextId,
+      app: "logging",
+      repo: "constitute-logging-ui",
+      identityId: String(runtimeSnapshot?.shell?.identity?.identityId || "").trim(),
+      devicePk: String(access?.servicePk || record?.devicePk || record?.pk || "").trim(),
+      gatewayPk: String(access?.gatewayPk || record?.hostGatewayPk || record?.devicePk || record?.pk || "").trim(),
+      servicePk: String(access?.servicePk || record?.devicePk || record?.pk || "").trim(),
+      service: "logging",
+      serviceCapability: String(access?.serviceCapability || "").trim(),
+      display: access?.display ?? {},
+      createdAt: Date.now(),
+      expiresAt: Number(access?.expiresAt || (Date.now() + (2 * 60 * 1000))),
+    };
+    await runtimeCall(BROKER.SERVICE_ACCESS_CONTEXT_PUT, { context }, RUNTIME_WRITE_TIMEOUT_MS);
+    const url = buildManagedSurfaceUrl("constitute-logging-ui", contextId);
+    window.open(url, "_blank", "noopener,noreferrer");
+    addNotification("good", "Logging opened", "Logging service access context was published to the shared runtime.");
+  } catch (error) {
+    addNotification("bad", "Logging service access failed", String(error?.message || error));
+  }
 }
 
 async function requestGatewayInstall(record) {
