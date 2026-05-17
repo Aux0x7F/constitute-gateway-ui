@@ -1,5 +1,11 @@
 # constitute-gateway-ui
 
-`constitute-gateway-ui` is the dedicated first-party browser surface for gateway inventory, hosted services, network posture, and security posture.
+`constitute-gateway-ui` is the browser management surface for gateway state.
 
-It consumes shared runtime and account authority from `constitute-account`, shared chrome primitives from `constitute-ui`, and shared service-access constants from `constitute-protocol`.
+It presents gateway inventory, hosted-service posture, swarm edge state, network
+posture, and operator controls that belong in the browser rather than in the
+native gateway process.
+
+It renders gateway/runtime read models and submits narrow operator intents. It
+does not mint service membership, route truth, or hosted-service health from
+app-local fallback state.

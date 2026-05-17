@@ -2,14 +2,28 @@ import "constitute-ui/styles.css";
 import "./styles.css";
 import {
   renderActionList,
-  renderAccountCenterSummary,
   renderFirstPartyShell,
   setConnectionStateText,
 } from "constitute-ui";
-import { BROKER } from "constitute-protocol";
+import { createRuntimeSurfaceClient } from "../../constitute-ui/src/runtime-surface-client.js";
+import {
+  captureActiveFieldState,
+  prepareRuntimeSnapshotModel,
+  restoreActiveFieldState,
+  runtimeStatusRows,
+} from "./runtime-model.js";
+import {
+  PLATFORM_RUNTIME_BUILD_ID as RUNTIME_WORKER_BUILD_ID,
+  runtimeAttachDebugInfo,
+  runtimeSharedWorkerName,
+  runtimeWorkerScriptUrl as accountRuntimeWorkerScriptUrl,
+} from "../../constitute-account/runtime-contract.js";
+import { RUNTIME_DIAGNOSTIC_OPERATOR_PLANES, attachRuntimeDiagnostics } from "../../constitute-account/runtime-diagnostics.js";
+import {
+  browserStorageShellContext,
+  deriveRuntimeShellState,
+} from "../../constitute-account/runtime-shell-state.js";
 
-const RUNTIME_WORKER_VERSION = Object.freeze({ major: 2, minor: 12 });
-const RUNTIME_WORKER_BUILD_ID = `runtime-${RUNTIME_WORKER_VERSION.major}.${RUNTIME_WORKER_VERSION.minor}`;
 const RUNTIME_ATTACH_TIMEOUT_MS = 5_000;
 const RUNTIME_WRITE_TIMEOUT_MS = 10_000;
 const GATEWAY_ACTION_TIMEOUT_MS = 120_000;
@@ -121,7 +135,7 @@ const shell = renderFirstPartyShell(app, {
     { id: "runtime", label: "Runtime / Updates" },
   ],
   mainHtml: GATEWAY_MAIN_HTML,
-  accountCenterTitle: "Account",
+  accountCenterTitle: "",
 });
 
 const btnBellEl = shell.btnBellEl;
@@ -175,16 +189,14 @@ let bootSplashDismissed = false;
 let currentActivity = "gateways";
 let runtimeReady = false;
 let runtimeSnapshot = null;
-let runtimePort = null;
-let runtimeRequestSeq = 1;
-const pendingRuntimeResponses = new Map();
+let runtimeDiagnosticsAgent = null;
+let runtimeClient = null;
+let preparedRuntimeSnapshot = prepareRuntimeSnapshotModel(null);
 let accountBridgeFrame = null;
 let accountBridgePromise = null;
 
 function runtimeWorkerUrl() {
-  const target = new URL("/constitute-account/runtime.worker.js", window.location.origin);
-  target.searchParams.set("v", RUNTIME_WORKER_BUILD_ID);
-  return target.toString();
+  return accountRuntimeWorkerScriptUrl(window.location.origin);
 }
 
 function accountBridgeUrl() {
@@ -358,16 +370,8 @@ function normalizedArray(value) {
 }
 
 function runtimeCall(type, payload = {}, timeoutMs = 20_000) {
-  if (!runtimePort) return Promise.reject(new Error("shared runtime is unavailable"));
-  const requestId = `gateway-ui-${type}-${runtimeRequestSeq++}`;
-  return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(() => {
-      pendingRuntimeResponses.delete(requestId);
-      reject(new Error(`${type} timed out`));
-    }, timeoutMs);
-    pendingRuntimeResponses.set(requestId, { resolve, reject, timer, type });
-    runtimePort.postMessage({ type, requestId, clientId: "gateway-ui", ...payload });
-  });
+  return runtimeClient?.call(type, payload, timeoutMs)
+    || Promise.reject(new Error("shared runtime is unavailable"));
 }
 
 async function runtimeBrokerCall(type, payload = {}, timeoutMs = 20_000, reason = "") {
@@ -395,86 +399,75 @@ function absorbRuntimeSnapshot(snapshot) {
 
 function attachRuntime() {
   if (typeof SharedWorker === "undefined") return null;
-  try {
-    const worker = new SharedWorker(runtimeWorkerUrl(), {
-      type: "module",
-      name: `constitute-account-runtime-${RUNTIME_WORKER_BUILD_ID}`,
-    });
-    const port = worker.port;
-    port.start();
-    port.onmessage = (event) => {
-      const msg = event?.data || {};
-      if (msg.type === "runtime.attached" || msg.type === "runtime.snapshot") {
-        absorbRuntimeSnapshot(msg.snapshot || null);
-        dismissBootSplash();
-        return;
-      }
-      if (msg.type === "runtime.response") {
-        const requestId = String(msg.requestId || "").trim();
-        const pending = pendingRuntimeResponses.get(requestId);
-        if (!pending) return;
-        clearTimeout(pending.timer);
-        pendingRuntimeResponses.delete(requestId);
-        if (msg.ok === false) pending.reject(new Error(String(msg.error || `${pending.type} failed`)));
-        else pending.resolve(msg.result);
-      }
-    };
-    port.postMessage({
-      type: "runtime.attach",
-      clientId: "gateway-ui",
-      surface: "gateway-ui",
-      broker: false,
-    });
-    runtimePort = port;
-    void ensureAccountBridge("gateway-ui startup");
-    window.setTimeout(() => {
+  const debugEnabled = new URLSearchParams(window.location.search || "").get("debug") === "1";
+  runtimeClient = createRuntimeSurfaceClient({
+    clientId: "gateway-ui",
+    surface: "gateway-ui",
+    workerUrl: runtimeWorkerUrl(),
+    workerName: runtimeSharedWorkerName(),
+    attachTimeoutMs: RUNTIME_ATTACH_TIMEOUT_MS,
+    callTimeoutMs: 20_000,
+    debug: debugEnabled,
+    debugInfo: runtimeAttachDebugInfo(window.location.origin),
+    logPrefix: "gateway-ui",
+    onPort: (port) => {
+      runtimeDiagnosticsAgent = attachRuntimeDiagnostics({
+        port,
+        surface: "constitute-gateway-ui",
+        clientId: "gateway-ui",
+        enabled: debugEnabled,
+        planes: RUNTIME_DIAGNOSTIC_OPERATOR_PLANES,
+        minLevelByPlane: { diagnostic: "warn" },
+        denyKinds: ["projection.applied", "projection.ignored"],
+      });
+    },
+    onMessage: (msg) => runtimeDiagnosticsAgent?.handleMessage(msg) === true,
+    onSnapshot: (snapshot) => {
+      absorbRuntimeSnapshot(snapshot || null);
+      dismissBootSplash();
+    },
+    onAttachTimeout: () => {
       if (!bootSplashDismissed) dismissBootSplash();
-    }, RUNTIME_ATTACH_TIMEOUT_MS);
-    return port;
-  } catch (error) {
-    console.warn("[gateway-ui] runtime attach failed", error);
-    window.setTimeout(() => dismissBootSplash(), 350);
-    return null;
-  }
+    },
+    onAttachError: (error) => {
+      console.warn("[gateway-ui] runtime attach failed", error);
+      window.setTimeout(() => dismissBootSplash(), 350);
+    },
+  });
+  const port = runtimeClient.attach();
+  if (port) void ensureAccountBridge("gateway-ui startup");
+  return port;
 }
 
 function identitySummary() {
-  const identity = runtimeSnapshot?.shell?.identity || {};
-  const linked = Boolean(identity?.linked);
-  const identityId = String(identity?.identityId || "").trim();
-  const label = linked ? labelForIdentity(identityId) : "@unlinked";
-  return { linked, identityId, label };
+  const shellState = deriveRuntimeShellState(runtimeSnapshot, { context: browserStorageShellContext() });
+  return {
+    linked: shellState.identity.linked,
+    identityId: shellState.identity.identityId,
+    label: shellState.identity.handle,
+    authorityState: shellState.identity.authorityState,
+  };
 }
 
 function setConnectionSummaryFromSnapshot() {
-  const shellState = runtimeSnapshot?.shell || {};
-  const connection = shellState?.connection || {};
-  const relay = shellState?.relay || {};
-  const ownedGateway = shellState?.ownedGateway || {};
-  const services = shellState?.services || {};
-  const identity = identitySummary();
+  const shellState = deriveRuntimeShellState(runtimeSnapshot, { context: browserStorageShellContext() });
 
-  identityHandleEl.textContent = identity.linked ? labelForIdentity(identity.identityId) : "@unlinked";
-  identityHandleEl.classList.toggle("identityHandle-linked", identity.linked);
-  identityHandleEl.classList.toggle("identityHandle-unlinked", !identity.linked);
-  identityHandleEl.title = identity.identityId ? "Open account center" : "Identity not linked yet";
+  identityHandleEl.textContent = shellState.identity.handle;
+  identityHandleEl.classList.toggle("identityHandle-linked", shellState.identity.linked);
+  identityHandleEl.classList.toggle("identityHandle-unlinked", !shellState.identity.linked);
+  identityHandleEl.title = shellState.identity.title;
+  identityHandleEl.setAttribute("aria-label", shellState.identity.ariaLabel);
 
-  const connectionLabel = String(connection?.label || "Offline").trim() || "Offline";
+  const connectionLabel = shellState.connection.label;
   setConnectionStateText(connStateTextEl, {
     label: connectionLabel,
-    toneClass: connectionToneClass(String(connection?.code || "").trim().toLowerCase()),
+    toneClass: shellState.connection.toneClass,
   });
   popConnectionEl.textContent = connectionLabel;
-  popRelayEl.textContent = String(relay?.state || "offline");
-  popGatewayEl.textContent = String(ownedGateway?.state || "unknown");
-  popServicesEl.textContent = String(services?.state || "unknown");
-  popConnectionReasonEl.textContent = String(connection?.reason || "Waiting for account runtime.");
-}
-
-function connectionToneClass(code) {
-  if (code === "connected" || code === "healthy") return "connStateText-connected";
-  if (code === "connected-limited" || code === "degraded" || code === "connecting") return "connStateText-limited";
-  return "connStateText-offline";
+  popRelayEl.textContent = shellState.relay.state;
+  popGatewayEl.textContent = shellState.gateway.state;
+  popServicesEl.textContent = shellState.services.state;
+  popConnectionReasonEl.textContent = shellState.connection.reason;
 }
 
 function labelForIdentity(identityId) {
@@ -500,30 +493,6 @@ function setActivity(activity) {
 
 function normalizeRole(value) {
   return String(value || "").trim().toLowerCase();
-}
-
-function normalizeRecords(snapshot) {
-  const managed = snapshot?.managedAppliances || {};
-  const buckets = [
-    { scope: "owned", items: normalizedArray(managed?.owned) },
-    { scope: "shared", items: normalizedArray(managed?.granted) },
-    { scope: "discoverable", items: normalizedArray(managed?.discoverable) },
-  ];
-  const out = [];
-  const seen = new Set();
-  for (const bucket of buckets) {
-    for (const raw of bucket.items) {
-      if (!raw || typeof raw !== "object") continue;
-      const key = `${bucket.scope}:${String(raw.devicePk || raw.pk || raw.hostGatewayPk || raw.service || "").trim()}`;
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      out.push({
-        ...raw,
-        __scope: bucket.scope,
-      });
-    }
-  }
-  return out;
 }
 
 function isGatewayRecord(record) {
@@ -645,7 +614,7 @@ function freshnessLabel(record) {
 
 function scopePill(scope) {
   const value = String(scope || "discoverable").trim();
-  const label = value === "owned" ? "Owned" : (value === "shared" ? "Shared" : "Discoverable");
+  const label = value === "owned" ? "Owned" : (value === "shared" ? "Shared" : (value === "runtime" ? "Runtime" : "Discoverable"));
   return `<span class="gatewayScopePill ${escapeHtml(value)}">${escapeHtml(label)}</span>`;
 }
 
@@ -727,6 +696,15 @@ function renderGatewayList(records) {
     `;
     const actions = document.createElement("div");
     actions.className = "gatewayActionStrip";
+    const zoneInput = document.createElement("input");
+    zoneInput.type = "text";
+    zoneInput.className = "gatewayInlineInput";
+    zoneInput.placeholder = "extra zones";
+    zoneInput.value = extraZonesForGateway(gatewayPk).join(", ");
+    zoneInput.dataset.preserveInputKey = `gateway-zone-sync:${gatewayPk}`;
+    zoneInput.addEventListener("input", () => {
+      setExtraZonesForGateway(gatewayPk, parseZoneKeyList(zoneInput.value));
+    });
 
     const openNvrButton = actionButton(nvrRecord ? "Open Security Cameras" : "Open Security Cameras", () => {
       void openSecurityCameras(nvrRecord || {
@@ -746,8 +724,9 @@ function renderGatewayList(records) {
     }
 
     const zoneSyncButton = actionButton("Sync Zones", () => {
-      void requestZoneSync(record);
+      void requestZoneSync(record, { extraZoneText: zoneInput.value });
     });
+    actions.appendChild(zoneInput);
     actions.appendChild(zoneSyncButton);
 
     row.appendChild(actions);
@@ -759,7 +738,7 @@ function renderServiceList(records) {
   serviceListEl.innerHTML = "";
   const services = collectInstalledServices(records);
   serviceStatusEl.textContent = services.length > 0
-    ? `${services.length} installed service${services.length === 1 ? "" : "s"} projected from gateway inventory.`
+    ? `${services.length} installed service${services.length === 1 ? "" : "s"} projected from runtime catalog/snapshot.`
     : "No installed services are currently projected.";
   if (services.length === 0) {
     serviceListEl.innerHTML = `<article class="gatewayEmpty">No installed services are currently projected.</article>`;
@@ -800,6 +779,7 @@ function renderServiceList(records) {
             <div>service ${escapeHtml(service || "unknown")}</div>
             <div>status <span class="gatewayStatusTone-${escapeHtml(toneForLabel(status))}">${escapeHtml(status)}</span></div>
             <div>host gateway ${escapeHtml(record.__hostGatewayLabel || shortPk(record?.hostGatewayPk || record?.host_gateway_pk || ""))}</div>
+            <div>source ${escapeHtml(record.__source === "serviceCatalog" ? "runtime catalog" : "runtime snapshot")}</div>
             <div>freshness ${escapeHtml(freshnessLabel(record))}</div>
             ${factRows.map((fact) => `<div>${escapeHtml(fact)}</div>`).join("")}
           </div>
@@ -850,17 +830,18 @@ function renderRows(container, rows) {
 }
 
 function renderNetworkView(records) {
-  const shellState = runtimeSnapshot?.shell || {};
-  const connection = shellState?.connection || {};
-  const relay = shellState?.relay || {};
-  const services = shellState?.services || {};
+  const shellState = deriveRuntimeShellState(runtimeSnapshot, { context: browserStorageShellContext() });
   renderRows(networkSummaryEl, [
-    { label: "Connection", value: String(connection?.label || "Offline"), tone: toneForLabel(connection?.label) },
-    { label: "Relay", value: String(relay?.state || "offline"), tone: toneForLabel(relay?.state) },
-    { label: "Services", value: String(services?.state || "unknown"), tone: toneForLabel(services?.state) },
+    { label: "Connection", value: shellState.connection.label, tone: toneForLabel(shellState.connection.label) },
+    { label: "Relay", value: shellState.relay.state, tone: toneForLabel(shellState.relay.state) },
+    { label: "Services", value: shellState.services.state, tone: toneForLabel(shellState.services.state) },
   ]);
   renderRows(zonesSummaryEl, [
-    { label: "Identity authority", value: identitySummary().linked ? "Linked" : "Unlinked", tone: identitySummary().linked ? "good" : "warn" },
+    {
+      label: "Identity authority",
+      value: shellState.identity.linked ? titleCaseWords(shellState.identity.authorityState) : "Unlinked",
+      tone: shellState.identity.linked && shellState.identity.authorityState !== "unlinked" ? "good" : "warn",
+    },
     { label: "Runtime snapshot age", value: formatAge(runtimeSnapshot?.updatedAt), tone: "neutral" },
   ]);
 }
@@ -872,13 +853,9 @@ function renderSecurityView(records) {
   ]);
 }
 
-function renderRuntimeView(records) {
+function renderRuntimeView(records, prepared = preparedRuntimeSnapshot) {
   const issue = runtimeSnapshot?.managedServiceIssue || null;
-  renderRows(runtimeSummaryEl, [
-    { label: "Runtime build", value: String(runtimeSnapshot?.buildId || RUNTIME_WORKER_BUILD_ID), tone: "neutral" },
-    { label: "Snapshot age", value: formatAge(runtimeSnapshot?.updatedAt), tone: "neutral" },
-    { label: "Projected records", value: String(records.length), tone: "neutral" },
-  ]);
+  renderRows(runtimeSummaryEl, runtimeStatusRows(runtimeSnapshot, prepared, records, RUNTIME_WORKER_BUILD_ID));
   if (!issue) {
     renderRows(issueSummaryEl, [
       { label: "Managed services", value: "No active runtime issue", tone: "good" },
@@ -900,6 +877,15 @@ function toneForLabel(value) {
   return "neutral";
 }
 
+function titleCaseWords(value) {
+  return String(value || "")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
 function formatAge(ts) {
   const at = Number(ts || 0);
   if (!at) return "unknown";
@@ -914,25 +900,21 @@ function formatAge(ts) {
 }
 
 function renderSnapshotState() {
+  const activeFieldState = captureActiveFieldState(document);
   setConnectionSummaryFromSnapshot();
-  const records = normalizeRecords(runtimeSnapshot);
+  preparedRuntimeSnapshot = prepareRuntimeSnapshotModel(runtimeSnapshot, { browserStorage: window.localStorage });
+  const records = preparedRuntimeSnapshot.records;
   renderGatewayList(records);
   renderServiceList(records);
   renderNetworkView(records);
   renderSecurityView(records);
-  renderRuntimeView(records);
+  renderRuntimeView(records, preparedRuntimeSnapshot);
   renderAccountCenter();
+  restoreActiveFieldState(activeFieldState, document);
 }
 
 function renderAccountCenter() {
-  const identity = identitySummary();
-  const connection = String(connStateTextEl.textContent || "Offline").trim() || "Offline";
-  renderAccountCenterSummary(accountCenterSummaryEl, {
-    handle: identity.identityId ? labelForIdentity(identity.identityId) : "@unlinked",
-    linked: Boolean(identity.identityId),
-    connectionLabel: connection,
-    connectionToneClass: connectionToneClass(String(runtimeSnapshot?.shell?.connection?.code || "").trim().toLowerCase()),
-  });
+  accountCenterSummaryEl.replaceChildren();
   renderActionList(accountCenterActionsEl, [
     {
       id: "account.open_center",
@@ -941,38 +923,6 @@ function renderAccountCenter() {
       onSelect: () => {
         closeAccountCenter();
         window.location.assign(new URL("/constitute-account/#activity=home", window.location.origin).toString());
-      },
-    },
-    {
-      id: "account.open_gateways",
-      label: "Open Gateways",
-      onSelect: () => {
-        closeAccountCenter();
-        closeDrawer();
-        setActivity("gateways");
-      },
-    },
-    {
-      id: "account.open_services",
-      label: "Open Hosted Services",
-      onSelect: () => {
-        closeAccountCenter();
-        closeDrawer();
-        setActivity("services");
-      },
-    },
-    {
-      id: "account.copy_identity",
-      label: "Copy Identity ID",
-      disabled: !identity.identityId,
-      onSelect: () => {
-        closeAccountCenter();
-        if (!identity.identityId) return;
-        void navigator.clipboard.writeText(identity.identityId).then(() => {
-          addNotification("good", "Identity copied", "Copied linked identity ID.");
-        }).catch((error) => {
-          addNotification("bad", "Identity copy failed", String(error?.message || error));
-        });
       },
     },
   ]);
@@ -992,38 +942,10 @@ async function openSecurityCameras(record, opts = {}) {
     addNotification("warn", "Runtime unavailable", "Open constitute-account to hydrate the shared runtime first.");
     return;
   }
-  try {
-    const access = await runtimeBrokerCall(BROKER.SERVICE_ACCESS_REQUEST, {
-      payload: {
-        record,
-        options: {
-          service: "nvr",
-          capability: "nvr.view",
-        },
-      },
-    }, GATEWAY_ACTION_TIMEOUT_MS, "service access");
-    const contextId = randomOpaqueId("service-access");
-    const context = {
-      contextId,
-      app: "nvr",
-      repo: "constitute-nvr-ui",
-      identityId: String(runtimeSnapshot?.shell?.identity?.identityId || "").trim(),
-      devicePk: String(access?.servicePk || record?.devicePk || record?.pk || "").trim(),
-      gatewayPk: String(access?.gatewayPk || record?.hostGatewayPk || record?.devicePk || record?.pk || "").trim(),
-      servicePk: String(access?.servicePk || record?.devicePk || record?.pk || "").trim(),
-      service: "nvr",
-      serviceCapability: String(access?.serviceCapability || "").trim(),
-      display: access?.display ?? {},
-      createdAt: Date.now(),
-      expiresAt: Number(access?.expiresAt || (Date.now() + (2 * 60 * 1000))),
-    };
-    await runtimeCall(BROKER.SERVICE_ACCESS_CONTEXT_PUT, { context }, RUNTIME_WRITE_TIMEOUT_MS);
-    const url = buildManagedSurfaceUrl("constitute-nvr-ui", contextId, opts);
-    window.open(url, "_blank", "noopener,noreferrer");
-    addNotification("good", "Security Cameras opened", "Managed service access context was published to the shared runtime.");
-  } catch (error) {
-    addNotification("bad", "Security Cameras service access failed", String(error?.message || error));
-  }
+  const url = buildManagedSurfaceUrl("constitute-nvr-ui", opts);
+  window.open(url, "_blank", "noopener,noreferrer");
+  const label = String(record?.label || record?.deviceLabel || record?.displayName || "runtime directory").trim();
+  addNotification("good", "Security Cameras opened", `Opened from ${label}.`);
 }
 
 async function openLogging(record) {
@@ -1031,38 +953,10 @@ async function openLogging(record) {
     addNotification("warn", "Runtime unavailable", "Open constitute-account to hydrate the shared runtime first.");
     return;
   }
-  try {
-    const access = await runtimeBrokerCall(BROKER.SERVICE_ACCESS_REQUEST, {
-      payload: {
-        record,
-        options: {
-          service: "logging",
-          capability: "logging.view",
-        },
-      },
-    }, GATEWAY_ACTION_TIMEOUT_MS, "logging service access");
-    const contextId = randomOpaqueId("service-access");
-    const context = {
-      contextId,
-      app: "logging",
-      repo: "constitute-logging-ui",
-      identityId: String(runtimeSnapshot?.shell?.identity?.identityId || "").trim(),
-      devicePk: String(access?.servicePk || record?.devicePk || record?.pk || "").trim(),
-      gatewayPk: String(access?.gatewayPk || record?.hostGatewayPk || record?.devicePk || record?.pk || "").trim(),
-      servicePk: String(access?.servicePk || record?.devicePk || record?.pk || "").trim(),
-      service: "logging",
-      serviceCapability: String(access?.serviceCapability || "").trim(),
-      display: access?.display ?? {},
-      createdAt: Date.now(),
-      expiresAt: Number(access?.expiresAt || (Date.now() + (2 * 60 * 1000))),
-    };
-    await runtimeCall(BROKER.SERVICE_ACCESS_CONTEXT_PUT, { context }, RUNTIME_WRITE_TIMEOUT_MS);
-    const url = buildManagedSurfaceUrl("constitute-logging-ui", contextId);
-    window.open(url, "_blank", "noopener,noreferrer");
-    addNotification("good", "Logging opened", "Logging service access context was published to the shared runtime.");
-  } catch (error) {
-    addNotification("bad", "Logging service access failed", String(error?.message || error));
-  }
+  const url = buildManagedSurfaceUrl("constitute-logging-ui");
+  window.open(url, "_blank", "noopener,noreferrer");
+  const label = String(record?.label || record?.deviceLabel || record?.displayName || "runtime directory").trim();
+  addNotification("good", "Logging opened", `Opened from ${label}.`);
 }
 
 async function requestGatewayInstall(record) {
@@ -1076,13 +970,15 @@ async function requestGatewayInstall(record) {
   }
 }
 
-async function requestZoneSync(record) {
+async function requestZoneSync(record, opts = {}) {
   const gatewayPk = String(record?.devicePk || record?.pk || "").trim();
   const existing = extraZonesForGateway(gatewayPk);
-  const entered = window.prompt(
-    "Extra gateway zone keys (comma or space separated). Identity zones are always synced automatically.",
-    existing.join(", "),
-  );
+  const entered = Object.hasOwn(opts, "extraZoneText")
+    ? String(opts.extraZoneText || "")
+    : window.prompt(
+        "Extra gateway zone keys (comma or space separated). Identity zones are always synced automatically.",
+        existing.join(", "),
+      );
   if (entered === null) return;
   const extraZoneKeys = parseZoneKeyList(entered);
   setExtraZonesForGateway(gatewayPk, extraZoneKeys);
@@ -1096,10 +992,9 @@ async function requestZoneSync(record) {
   }
 }
 
-function buildManagedSurfaceUrl(repo, contextId, opts = {}) {
+function buildManagedSurfaceUrl(repo, opts = {}) {
   const target = new URL(`/${String(repo || "").trim()}/`, window.location.origin);
   const params = new URLSearchParams();
-  params.set("serviceAccess", String(contextId || "").trim());
   const activity = String(opts?.activity || "").trim();
   const settingsTab = String(opts?.settingsTab || "").trim();
   const camera = String(opts?.camera || "").trim();
