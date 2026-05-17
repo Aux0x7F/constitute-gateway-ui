@@ -23,6 +23,7 @@ import {
   browserStorageShellContext,
   deriveRuntimeShellState,
 } from "../../constitute-account/runtime-shell-state.js";
+import { gatewaySurfaceAttachContext } from "./surface-app-contract.js";
 
 const RUNTIME_ATTACH_TIMEOUT_MS = 5_000;
 const RUNTIME_WRITE_TIMEOUT_MS = 10_000;
@@ -410,6 +411,7 @@ function attachRuntime() {
     debug: debugEnabled,
     debugInfo: runtimeAttachDebugInfo(window.location.origin),
     logPrefix: "gateway-ui",
+    attachContext: gatewaySurfaceAttachContext,
     onPort: (port) => {
       runtimeDiagnosticsAgent = attachRuntimeDiagnostics({
         port,
@@ -779,7 +781,7 @@ function renderServiceList(records) {
             <div>service ${escapeHtml(service || "unknown")}</div>
             <div>status <span class="gatewayStatusTone-${escapeHtml(toneForLabel(status))}">${escapeHtml(status)}</span></div>
             <div>host gateway ${escapeHtml(record.__hostGatewayLabel || shortPk(record?.hostGatewayPk || record?.host_gateway_pk || ""))}</div>
-            <div>source ${escapeHtml(record.__source === "serviceCatalog" ? "runtime catalog" : "runtime snapshot")}</div>
+            <div>source ${escapeHtml(record.__source === "serviceRegistry" ? "service registry" : record.__source === "serviceCatalog" ? "runtime catalog" : "runtime snapshot")}</div>
             <div>freshness ${escapeHtml(freshnessLabel(record))}</div>
             ${factRows.map((fact) => `<div>${escapeHtml(fact)}</div>`).join("")}
           </div>

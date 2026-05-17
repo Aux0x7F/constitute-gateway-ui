@@ -1,3 +1,6 @@
+import { preparedServiceRegistry } from "../../constitute-ui/src/service-registry-model.js";
+import { projectionPostureSummary } from "../../constitute-ui/src/projection-read-model.js";
+
 function normalizedArray(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -122,9 +125,9 @@ function browserStorageManagedRecords(storage) {
 }
 
 function serviceCatalogRecords(snapshot) {
-  const catalog = normalizeObject(snapshot?.serviceCatalog);
-  const updatedAt = Number(catalog?.updatedAt || snapshot?.updatedAt || 0);
-  return normalizedArray(catalog?.services).flatMap((entry) => {
+  const registry = preparedServiceRegistry(snapshot || {});
+  const updatedAt = Number(registry.updatedAt || snapshot?.updatedAt || 0);
+  return normalizedArray(registry.services).flatMap((entry) => {
     if (!entry || typeof entry !== "object") return [];
     const service = normalizeRole(entry.service || "");
     const servicePk = String(entry.servicePk || entry.service_pk || "").trim();
@@ -145,7 +148,8 @@ function serviceCatalogRecords(snapshot) {
       },
       managedAvailabilityUpdatedAt: updatedAt,
       __scope: "runtime",
-      __source: "serviceCatalog",
+      __source: registry.source,
+      __registryState: registry.state,
     }];
   });
 }
@@ -192,15 +196,6 @@ export function normalizeRuntimeRecords(snapshot, options = {}) {
   return Array.from(byKey.values());
 }
 
-function countCoverageStates(coverage) {
-  const counts = {};
-  for (const item of Object.values(normalizeObject(coverage))) {
-    const syncState = String(item?.syncState || "unknown").trim() || "unknown";
-    counts[syncState] = (counts[syncState] || 0) + 1;
-  }
-  return counts;
-}
-
 function latestEntry(entries) {
   return normalizedArray(entries)
     .slice()
@@ -238,30 +233,21 @@ export function prepareSwarmEdgeStatus(snapshot) {
 }
 
 export function prepareProjectionStatus(snapshot) {
-  const coverage = normalizeObject(snapshot?.projectionCoverage);
-  const projections = normalizeObject(snapshot?.projections);
-  const coverageCounts = countCoverageStates(coverage);
-  const projectionCount = Object.keys(projections).length;
-  const coverageCount = Object.keys(coverage).length;
-  const stateLabel = Object.keys(coverageCounts).length === 0
-    ? "none"
-    : Object.entries(coverageCounts).map(([state, count]) => `${state} ${count}`).join(", ");
-  return {
-    projectionCount,
-    coverageCount,
-    coverageCounts,
-    stateLabel,
-  };
+  return projectionPostureSummary(snapshot || {});
 }
 
 export function prepareRuntimeSnapshotModel(snapshot, options = {}) {
   const records = normalizeRuntimeRecords(snapshot, options);
-  const serviceCatalog = normalizeObject(snapshot?.serviceCatalog);
+  const registry = preparedServiceRegistry(snapshot || {});
   return {
     records,
     serviceCatalog: {
-      updatedAt: Number(serviceCatalog.updatedAt || 0),
-      serviceCount: normalizedArray(serviceCatalog.services).length,
+      updatedAt: Number(registry.updatedAt || 0),
+      serviceCount: registry.serviceCount,
+      source: registry.source,
+      state: registry.state,
+      claimCount: registry.claimCount,
+      entryCount: registry.entryCount,
     },
     edge: prepareSwarmEdgeStatus(snapshot),
     projection: prepareProjectionStatus(snapshot),
@@ -278,7 +264,7 @@ export function runtimeStatusRows(snapshot, prepared, records, fallbackBuildId =
     { label: "Projected records", value: String(normalizedArray(records).length), tone: "neutral" },
     {
       label: "Service catalog",
-      value: `${Number(serviceCatalog.serviceCount || 0)} services`,
+      value: `${Number(serviceCatalog.serviceCount || 0)} services / ${serviceCatalog.state || "unknown"}`,
       tone: Number(serviceCatalog.serviceCount || 0) > 0 ? "good" : "warn",
     },
     {
