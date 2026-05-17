@@ -781,7 +781,7 @@ function renderServiceList(records) {
             <div>service ${escapeHtml(service || "unknown")}</div>
             <div>status <span class="gatewayStatusTone-${escapeHtml(toneForLabel(status))}">${escapeHtml(status)}</span></div>
             <div>host gateway ${escapeHtml(record.__hostGatewayLabel || shortPk(record?.hostGatewayPk || record?.host_gateway_pk || ""))}</div>
-            <div>source ${escapeHtml(record.__source === "serviceCatalog" ? "runtime catalog" : "runtime snapshot")}</div>
+            <div>source ${escapeHtml(record.__source === "serviceRegistry" ? "service registry" : record.__source === "serviceCatalog" ? "runtime catalog" : "runtime snapshot")}</div>
             <div>freshness ${escapeHtml(freshnessLabel(record))}</div>
             ${factRows.map((fact) => `<div>${escapeHtml(fact)}</div>`).join("")}
           </div>
