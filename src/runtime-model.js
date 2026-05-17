@@ -37,6 +37,15 @@ function normalizeRole(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function postureState(value, fallback = "unknown") {
+  return String(normalizeObject(value).state || fallback).trim() || fallback;
+}
+
+function postureReason(value) {
+  const posture = normalizeObject(value);
+  return String(posture.cleanupReason || posture.reason || posture.blockedReason || "").trim();
+}
+
 function serviceRecordKey(record) {
   const service = normalizeRole(record?.service || record?.slug || record?.name || "");
   const servicePk = String(record?.devicePk || record?.pk || record?.servicePk || record?.service_pk || "").trim();
@@ -258,6 +267,10 @@ export function runtimeStatusRows(snapshot, prepared, records, fallbackBuildId =
   const edge = normalizeObject(prepared?.edge);
   const projection = normalizeObject(prepared?.projection);
   const serviceCatalog = normalizeObject(prepared?.serviceCatalog);
+  const resource = normalizeObject(snapshot?.resource);
+  const retention = normalizeObject(snapshot?.retention);
+  const resourceReason = postureReason(resource);
+  const retentionReason = postureReason(retention);
   return [
     { label: "Runtime build", value: String(snapshot?.buildId || fallbackBuildId), tone: "neutral" },
     { label: "Snapshot age", value: formatAge(snapshot?.updatedAt), tone: "neutral" },
@@ -296,6 +309,16 @@ export function runtimeStatusRows(snapshot, prepared, records, fallbackBuildId =
       label: "Projection sync",
       value: `${Number(projection.projectionCount || 0)} retained / ${projection.stateLabel || "none"}`,
       tone: Number(projection.projectionCount || 0) > 0 ? "good" : "warn",
+    },
+    {
+      label: "Resource posture",
+      value: [postureState(resource), resourceReason].filter(Boolean).join(" / "),
+      tone: resource.cleanupAllowed === true ? "good" : "warn",
+    },
+    {
+      label: "Retention posture",
+      value: [postureState(retention), retentionReason].filter(Boolean).join(" / "),
+      tone: retention.releaseRequired === true ? "warn" : "good",
     },
   ];
 }
