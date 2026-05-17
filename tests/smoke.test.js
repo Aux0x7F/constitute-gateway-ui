@@ -15,6 +15,8 @@ test("gateway ui manifest shape stays stable", async () => {
 test("gateway ui uses the current shared runtime worker build", () => {
   const source = readFileSync(resolve(here, "../src/main.js"), "utf8");
   assert.match(source, /from "\.\.\/\.\.\/constitute-account\/runtime-contract\.js"/);
+  assert.match(source, /from "\.\/surface-app-contract\.js"/);
+  assert.match(source, /attachContext: gatewaySurfaceAttachContext/);
   assert.match(source, /PLATFORM_RUNTIME_BUILD_ID as RUNTIME_WORKER_BUILD_ID/);
   assert.match(source, /runtimeSharedWorkerName/);
   assert.match(source, /accountRuntimeWorkerScriptUrl\(window\.location\.origin\)/);
@@ -22,6 +24,16 @@ test("gateway ui uses the current shared runtime worker build", () => {
   assert.doesNotMatch(source, /new SharedWorker/);
   assert.doesNotMatch(source, /pendingRuntimeResponses/);
   assert.doesNotMatch(source, /RUNTIME_WORKER_VERSION = Object\.freeze/);
+});
+
+test("gateway ui declares a surface app contract", async () => {
+  const { gatewaySurfaceApp, gatewaySurfaceAttachContext } = await import("../src/surface-app-contract.js");
+  assert.equal(gatewaySurfaceApp.posture.state, "ready");
+  assert.equal(gatewaySurfaceApp.hasRole("runtimeClient"), true);
+  assert.equal(gatewaySurfaceApp.hasRole("projectionModel"), true);
+  assert.equal(gatewaySurfaceApp.hasRole("productView"), true);
+  assert.equal(gatewaySurfaceAttachContext.kind, "surface.app.attachContext");
+  assert.equal(gatewaySurfaceAttachContext.appId, "constitute-gateway-ui");
 });
 
 test("gateway network panel consumes shared shell posture", () => {
