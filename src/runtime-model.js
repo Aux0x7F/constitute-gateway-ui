@@ -1,4 +1,5 @@
 import { preparedServiceRegistry } from "../../constitute-ui/src/service-registry-model.js";
+import { projectionPostureSummary } from "../../constitute-ui/src/projection-read-model.js";
 
 function normalizedArray(value) {
   return Array.isArray(value) ? value : [];
@@ -195,15 +196,6 @@ export function normalizeRuntimeRecords(snapshot, options = {}) {
   return Array.from(byKey.values());
 }
 
-function countCoverageStates(coverage) {
-  const counts = {};
-  for (const item of Object.values(normalizeObject(coverage))) {
-    const syncState = String(item?.syncState || "unknown").trim() || "unknown";
-    counts[syncState] = (counts[syncState] || 0) + 1;
-  }
-  return counts;
-}
-
 function latestEntry(entries) {
   return normalizedArray(entries)
     .slice()
@@ -241,20 +233,7 @@ export function prepareSwarmEdgeStatus(snapshot) {
 }
 
 export function prepareProjectionStatus(snapshot) {
-  const coverage = normalizeObject(snapshot?.projectionCoverage);
-  const projections = normalizeObject(snapshot?.projections);
-  const coverageCounts = countCoverageStates(coverage);
-  const projectionCount = Object.keys(projections).length;
-  const coverageCount = Object.keys(coverage).length;
-  const stateLabel = Object.keys(coverageCounts).length === 0
-    ? "none"
-    : Object.entries(coverageCounts).map(([state, count]) => `${state} ${count}`).join(", ");
-  return {
-    projectionCount,
-    coverageCount,
-    coverageCounts,
-    stateLabel,
-  };
+  return projectionPostureSummary(snapshot || {});
 }
 
 export function prepareRuntimeSnapshotModel(snapshot, options = {}) {
