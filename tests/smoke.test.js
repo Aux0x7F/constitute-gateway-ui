@@ -30,8 +30,11 @@ test("gateway ui uses the current shared runtime worker build", () => {
 test("gateway ui declares a surface app contract", async () => {
   const {
     gatewayRuntimeClientModule,
+    gatewayServiceManagerOperationPosture,
+    gatewayServiceManagerProofDigest,
     gatewaySurfaceApp,
     gatewaySurfaceAttachContext,
+    gatewaySurfaceBootstrapPosture,
     gatewaySurfaceModuleRegistry,
     gatewaySurfaceModules,
   } = await import("../src/surface-app-contract.js");
@@ -44,6 +47,11 @@ test("gateway ui declares a surface app contract", async () => {
   assert.equal(typeof gatewayRuntimeClientModule.createRuntimeSurfaceClient, "function");
   assert.equal(gatewaySurfaceAttachContext.kind, "surface.app.attachContext");
   assert.equal(gatewaySurfaceAttachContext.appId, "constitute-gateway-ui");
+  assert.equal(gatewaySurfaceBootstrapPosture.state, "ready");
+  assert.equal(gatewayServiceManagerOperationPosture.kind, "service.manager.operation.posture");
+  assert.equal(gatewayServiceManagerOperationPosture.state, "requested");
+  assert.equal(gatewayServiceManagerProofDigest.kind, "service.manager.proof.digest");
+  assert.equal(gatewaySurfaceAttachContext.serviceManagerOperationPosture, gatewayServiceManagerOperationPosture);
 });
 
 test("gateway network panel consumes shared shell posture", () => {
