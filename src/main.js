@@ -5,7 +5,6 @@ import {
   renderFirstPartyShell,
   setConnectionStateText,
 } from "constitute-ui";
-import { createRuntimeSurfaceClient } from "../../constitute-ui/src/runtime-surface-client.js";
 import {
   captureActiveFieldState,
   prepareRuntimeSnapshotModel,
@@ -22,8 +21,11 @@ import { RUNTIME_DIAGNOSTIC_OPERATOR_PLANES, attachRuntimeDiagnostics } from "..
 import {
   browserStorageShellContext,
   deriveRuntimeShellState,
-} from "../../constitute-account/runtime-shell-state.js";
-import { gatewaySurfaceAttachContext } from "./surface-app-contract.js";
+} from "../../constitute-ui/src/runtime-shell-state.js";
+import {
+  gatewayRuntimeClientModule,
+  gatewaySurfaceAttachContext,
+} from "./surface-app-contract.js";
 
 const RUNTIME_ATTACH_TIMEOUT_MS = 5_000;
 const RUNTIME_WRITE_TIMEOUT_MS = 10_000;
@@ -401,7 +403,7 @@ function absorbRuntimeSnapshot(snapshot) {
 function attachRuntime() {
   if (typeof SharedWorker === "undefined") return null;
   const debugEnabled = new URLSearchParams(window.location.search || "").get("debug") === "1";
-  runtimeClient = createRuntimeSurfaceClient({
+  runtimeClient = gatewayRuntimeClientModule.createRuntimeSurfaceClient({
     clientId: "gateway-ui",
     surface: "gateway-ui",
     workerUrl: runtimeWorkerUrl(),

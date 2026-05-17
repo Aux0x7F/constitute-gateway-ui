@@ -1,5 +1,15 @@
 import { SURFACE_APP, assertSurfaceAppContract } from "../../constitute-protocol/src/index.js";
 import { defineSurfaceAppContract } from "../../constitute-ui/src/surface-app-contract.js";
+import { createRuntimeSurfaceClient } from "../../constitute-ui/src/runtime-surface-client.js";
+import {
+  createSurfaceModuleRegistry,
+  surfaceAppModuleImplementations,
+} from "../../constitute-ui/src/surface-module-registry.js";
+import {
+  prepareRuntimeSnapshotModel,
+  prepareSwarmEdgeStatus,
+  runtimeStatusRows,
+} from "./runtime-model.js";
 
 const ISSUED_AT = 1700000000;
 
@@ -70,6 +80,49 @@ export const gatewaySurfaceAppContract = assertSurfaceAppContract({
 export const gatewaySurfaceApp = defineSurfaceAppContract(gatewaySurfaceAppContract, {
   validate: assertSurfaceAppContract,
 });
+
+export const gatewaySurfaceModuleRegistry = createSurfaceModuleRegistry([
+  {
+    moduleRef: "constitute-ui/runtime-surface-client@0.1.0",
+    role: SURFACE_APP.MODULE_ROLE.RUNTIME_CLIENT,
+    version: "0.1.0",
+    primitiveRefs: ["runtime.attach", "runtime.intent"],
+    implementation: Object.freeze({ createRuntimeSurfaceClient }),
+  },
+  {
+    moduleRef: "constitute-gateway-ui/runtime-model@0.1.0",
+    role: SURFACE_APP.MODULE_ROLE.PROJECTION_MODEL,
+    version: "0.1.0",
+    primitiveRefs: ["projection.materialization", "swarm.directory"],
+    implementation: Object.freeze({
+      prepareRuntimeSnapshotModel,
+      prepareSwarmEdgeStatus,
+      runtimeStatusRows,
+    }),
+  },
+  {
+    moduleRef: "constitute-gateway-ui/product-view@0.1.0",
+    role: SURFACE_APP.MODULE_ROLE.PRODUCT_VIEW,
+    version: "0.1.0",
+    primitiveRefs: ["runtime.posture.render"],
+    implementation: Object.freeze({ surfaceRef: "constitute-gateway-ui" }),
+  },
+]);
+
+export const gatewaySurfaceModules = surfaceAppModuleImplementations(
+  gatewaySurfaceModuleRegistry,
+  gatewaySurfaceApp,
+);
+
+export const gatewayRuntimeClientModule = gatewaySurfaceModuleRegistry.require(
+  gatewaySurfaceApp,
+  SURFACE_APP.MODULE_ROLE.RUNTIME_CLIENT,
+).implementation;
+
+export const gatewayProjectionModelModule = gatewaySurfaceModuleRegistry.require(
+  gatewaySurfaceApp,
+  SURFACE_APP.MODULE_ROLE.PROJECTION_MODEL,
+).implementation;
 
 export const gatewaySurfaceAttachContext = gatewaySurfaceApp.attachContext({
   productSurface: "constitute-gateway-ui",

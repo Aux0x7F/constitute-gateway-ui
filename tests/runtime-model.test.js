@@ -81,6 +81,16 @@ test("runtime model surfaces swarm edge queue reject and projection repair statu
         reason: "revisionGap",
       }],
     },
+    resource: {
+      state: "withinBudget",
+      cleanupAllowed: false,
+      cleanupReason: "retention posture must allow release before sweeping",
+    },
+    retention: {
+      state: "releaseRequired",
+      releaseRequired: true,
+      reason: "retention blockers active",
+    },
   };
   const edge = prepareSwarmEdgeStatus(snapshot);
 
@@ -111,6 +121,16 @@ test("runtime model surfaces swarm edge queue reject and projection repair statu
   });
   assert.equal(rows.find((row) => row.label === "Service catalog").value, "0 services / missing");
   assert.equal(rows.find((row) => row.label === "Projection sync").value, "1 retained / completeEnough 1");
+  assert.deepEqual(rows.find((row) => row.label === "Resource posture"), {
+    label: "Resource posture",
+    value: "withinBudget / retention posture must allow release before sweeping",
+    tone: "warn",
+  });
+  assert.deepEqual(rows.find((row) => row.label === "Retention posture"), {
+    label: "Retention posture",
+    value: "releaseRequired / retention blockers active",
+    tone: "warn",
+  });
 });
 
 test("active field state can survive a projection snapshot render", () => {

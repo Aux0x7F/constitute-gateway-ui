@@ -20,18 +20,28 @@ test("gateway ui uses the current shared runtime worker build", () => {
   assert.match(source, /PLATFORM_RUNTIME_BUILD_ID as RUNTIME_WORKER_BUILD_ID/);
   assert.match(source, /runtimeSharedWorkerName/);
   assert.match(source, /accountRuntimeWorkerScriptUrl\(window\.location\.origin\)/);
-  assert.match(source, /createRuntimeSurfaceClient/);
+  assert.match(source, /gatewayRuntimeClientModule\.createRuntimeSurfaceClient/);
+  assert.doesNotMatch(source, /runtime-surface-client\.js/);
   assert.doesNotMatch(source, /new SharedWorker/);
   assert.doesNotMatch(source, /pendingRuntimeResponses/);
   assert.doesNotMatch(source, /RUNTIME_WORKER_VERSION = Object\.freeze/);
 });
 
 test("gateway ui declares a surface app contract", async () => {
-  const { gatewaySurfaceApp, gatewaySurfaceAttachContext } = await import("../src/surface-app-contract.js");
+  const {
+    gatewayRuntimeClientModule,
+    gatewaySurfaceApp,
+    gatewaySurfaceAttachContext,
+    gatewaySurfaceModuleRegistry,
+    gatewaySurfaceModules,
+  } = await import("../src/surface-app-contract.js");
   assert.equal(gatewaySurfaceApp.posture.state, "ready");
   assert.equal(gatewaySurfaceApp.hasRole("runtimeClient"), true);
   assert.equal(gatewaySurfaceApp.hasRole("projectionModel"), true);
   assert.equal(gatewaySurfaceApp.hasRole("productView"), true);
+  assert.equal(gatewaySurfaceModuleRegistry.kind, "surface.module.registry");
+  assert.equal(gatewaySurfaceModules.state, "ready");
+  assert.equal(typeof gatewayRuntimeClientModule.createRuntimeSurfaceClient, "function");
   assert.equal(gatewaySurfaceAttachContext.kind, "surface.app.attachContext");
   assert.equal(gatewaySurfaceAttachContext.appId, "constitute-gateway-ui");
 });
