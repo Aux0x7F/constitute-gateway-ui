@@ -23,6 +23,7 @@ import {
   browserStorageShellContext,
   deriveRuntimeShellState,
 } from "../../constitute-account/runtime-shell-state.js";
+import { gatewaySurfaceAttachContext } from "./surface-app-contract.js";
 
 const RUNTIME_ATTACH_TIMEOUT_MS = 5_000;
 const RUNTIME_WRITE_TIMEOUT_MS = 10_000;
@@ -410,6 +411,7 @@ function attachRuntime() {
     debug: debugEnabled,
     debugInfo: runtimeAttachDebugInfo(window.location.origin),
     logPrefix: "gateway-ui",
+    attachContext: gatewaySurfaceAttachContext,
     onPort: (port) => {
       runtimeDiagnosticsAgent = attachRuntimeDiagnostics({
         port,
