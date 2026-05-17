@@ -14,6 +14,21 @@ test("gateway ui manifest shape stays stable", async () => {
 
 test("gateway ui uses the current shared runtime worker build", () => {
   const source = readFileSync(resolve(here, "../src/main.js"), "utf8");
-  assert.match(source, /const RUNTIME_WORKER_VERSION = Object\.freeze\(\{ major: 2, minor: 12 \}\)/);
-  assert.match(source, /name: `constitute-account-runtime-\$\{RUNTIME_WORKER_BUILD_ID\}`/);
+  assert.match(source, /from "\.\.\/\.\.\/constitute-account\/runtime-contract\.js"/);
+  assert.match(source, /PLATFORM_RUNTIME_BUILD_ID as RUNTIME_WORKER_BUILD_ID/);
+  assert.match(source, /runtimeSharedWorkerName/);
+  assert.match(source, /accountRuntimeWorkerScriptUrl\(window\.location\.origin\)/);
+  assert.match(source, /createRuntimeSurfaceClient/);
+  assert.doesNotMatch(source, /new SharedWorker/);
+  assert.doesNotMatch(source, /pendingRuntimeResponses/);
+  assert.doesNotMatch(source, /RUNTIME_WORKER_VERSION = Object\.freeze/);
+});
+
+test("gateway network panel consumes shared shell posture", () => {
+  const source = readFileSync(resolve(here, "../src/main.js"), "utf8");
+  assert.match(source, /function renderNetworkView\(records\)/);
+  assert.match(source, /const shellState = deriveRuntimeShellState\(runtimeSnapshot, \{ context: browserStorageShellContext\(\) \}\)/);
+  assert.match(source, /value: shellState\.connection\.label/);
+  assert.match(source, /value: shellState\.services\.state/);
+  assert.doesNotMatch(source, /const shellState = runtimeSnapshot\?\.shell \|\| \{\}/);
 });
