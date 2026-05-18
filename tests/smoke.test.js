@@ -32,11 +32,14 @@ test("gateway ui declares a surface app contract", async () => {
     gatewayRuntimeClientModule,
     gatewayServiceManagerOperationPosture,
     gatewayServiceManagerProofDigest,
+    gatewayServiceManagerSecretBoundary,
     gatewaySurfaceApp,
     gatewaySurfaceAttachContext,
+    gatewaySurfaceBootstrapContract,
     gatewaySurfaceBootstrapPosture,
     gatewaySurfaceModuleRegistry,
     gatewaySurfaceModules,
+    gatewaySurfaceRunnerPlan,
   } = await import("../src/surface-app-contract.js");
   assert.equal(gatewaySurfaceApp.posture.state, "ready");
   assert.equal(gatewaySurfaceApp.hasRole("runtimeClient"), true);
@@ -48,9 +51,17 @@ test("gateway ui declares a surface app contract", async () => {
   assert.equal(gatewaySurfaceAttachContext.kind, "surface.app.attachContext");
   assert.equal(gatewaySurfaceAttachContext.appId, "constitute-gateway-ui");
   assert.equal(gatewaySurfaceBootstrapPosture.state, "ready");
+  assert.equal(gatewaySurfaceRunnerPlan.kind, "surface.app.runner.plan");
+  assert.equal(gatewaySurfaceRunnerPlan.state, "ready");
+  assert.equal(gatewaySurfaceBootstrapContract.kind, "surface.app.bootstrap.contract");
+  assert.equal(gatewaySurfaceBootstrapContract.state, "ready");
+  assert.equal(gatewayServiceManagerSecretBoundary.kind, "service.manager.secretBoundary");
+  assert.equal(gatewayServiceManagerSecretBoundary.state, "notRequired");
   assert.equal(gatewayServiceManagerOperationPosture.kind, "service.manager.operation.posture");
   assert.equal(gatewayServiceManagerOperationPosture.state, "requested");
   assert.equal(gatewayServiceManagerProofDigest.kind, "service.manager.proof.digest");
+  assert.equal(gatewaySurfaceAttachContext.runnerPlan, gatewaySurfaceRunnerPlan);
+  assert.equal(gatewaySurfaceAttachContext.bootstrapContract, gatewaySurfaceBootstrapContract);
   assert.equal(gatewaySurfaceAttachContext.serviceManagerOperationPosture, gatewayServiceManagerOperationPosture);
 });
 
