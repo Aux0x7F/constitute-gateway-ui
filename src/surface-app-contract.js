@@ -14,7 +14,7 @@ import {
 import { createRuntimeSurfaceClient } from "../../constitute-ui/src/runtime-surface-client.js";
 import {
   createSurfaceModuleRegistry,
-  surfaceAppModuleImplementations,
+  surfaceAppModuleBindings,
 } from "../../constitute-ui/src/surface-module-registry.js";
 import {
   prepareRuntimeSnapshotModel,
@@ -137,9 +137,14 @@ export const gatewaySurfaceModuleRegistry = createSurfaceModuleRegistry([
   },
 ]);
 
-export const gatewaySurfaceModules = surfaceAppModuleImplementations(
+export const gatewaySurfaceModules = surfaceAppModuleBindings(
   gatewaySurfaceModuleRegistry,
   gatewaySurfaceApp,
+  {
+    runtimeClient: SURFACE_APP.MODULE_ROLE.RUNTIME_CLIENT,
+    projectionModel: SURFACE_APP.MODULE_ROLE.PROJECTION_MODEL,
+    productView: SURFACE_APP.MODULE_ROLE.PRODUCT_VIEW,
+  },
 );
 
 export const gatewaySurfaceRunnerPlan = surfaceAppRunnerPlan(gatewaySurfaceApp, {
@@ -170,15 +175,9 @@ export const gatewayServiceManagerProofDigest = surfaceServiceManagerProofDigest
   observedAt: ISSUED_AT,
 });
 
-export const gatewayRuntimeClientModule = gatewaySurfaceModuleRegistry.require(
-  gatewaySurfaceApp,
-  SURFACE_APP.MODULE_ROLE.RUNTIME_CLIENT,
-).implementation;
+export const gatewayRuntimeClientModule = gatewaySurfaceModules.byKey.runtimeClient.implementation;
 
-export const gatewayProjectionModelModule = gatewaySurfaceModuleRegistry.require(
-  gatewaySurfaceApp,
-  SURFACE_APP.MODULE_ROLE.PROJECTION_MODEL,
-).implementation;
+export const gatewayProjectionModelModule = gatewaySurfaceModules.byKey.projectionModel.implementation;
 
 export const gatewaySurfaceAttachContext = gatewaySurfaceApp.attachContext({
   productSurface: "constitute-gateway-ui",
