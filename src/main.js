@@ -433,8 +433,15 @@ function attachRuntime() {
     onAttachTimeout: () => {
       if (!bootSplashDismissed) dismissBootSplash();
     },
-    onAttachError: (error) => {
-      console.warn("[gateway-ui] runtime attach failed", error);
+    onAttachPosture: (posture) => {
+      if (!posture || posture.severity === "info") return;
+      console.info("[gateway-ui] runtime attach fallback", {
+        state: posture.state,
+        severity: posture.severity,
+        reason: posture.reason,
+      });
+    },
+    onAttachError: () => {
       window.setTimeout(() => dismissBootSplash(), 350);
     },
   });
