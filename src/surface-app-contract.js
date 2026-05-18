@@ -2,8 +2,11 @@ import {
   SURFACE_APP,
   assertServiceManagerSecretBoundary,
   assertSurfaceAppBootstrapContract,
+  assertSurfaceAppInstancePosture,
   assertSurfaceAppManifest,
+  assertSurfaceAppRuntimeSelectionPosture,
   assertSurfaceAppContract,
+  assertSurfaceAppRunnerPlan,
 } from "../../constitute-protocol/src/index.js";
 import {
   defineSurfaceAppContract,
@@ -169,14 +172,14 @@ export const gatewaySurfaceAppManifest = assertSurfaceAppManifest({
   issuedAt: ISSUED_AT,
 });
 
-export const gatewaySurfaceRuntimeSelectionPosture = surfaceAppRuntimeSelectionPosture(
+export const gatewaySurfaceRuntimeSelectionPosture = assertSurfaceAppRuntimeSelectionPosture(surfaceAppRuntimeSelectionPosture(
   gatewaySurfaceAppManifest,
   [gatewaySurfaceApp],
   {
     runtimeVersion: "0.1.0",
     issuedAt: ISSUED_AT,
   },
-);
+));
 
 export const gatewaySurfaceModuleRegistry = createSurfaceModuleRegistry([
   {
@@ -216,9 +219,9 @@ export const gatewaySurfaceModules = surfaceAppModuleBindings(
   },
 );
 
-export const gatewaySurfaceRunnerPlan = surfaceAppRunnerPlan(gatewaySurfaceApp, {
+export const gatewaySurfaceRunnerPlan = assertSurfaceAppRunnerPlan(surfaceAppRunnerPlan(gatewaySurfaceApp, {
   issuedAt: ISSUED_AT,
-});
+}));
 
 export const gatewayServiceManagerSecretBoundary = assertServiceManagerSecretBoundary(
   gatewaySurfaceRunnerPlan.secretBoundary,
@@ -244,7 +247,7 @@ export const gatewayServiceManagerProofDigest = surfaceServiceManagerProofDigest
   observedAt: ISSUED_AT,
 });
 
-export const gatewaySurfaceAppInstancePosture = surfaceAppInstancePosture(gatewaySurfaceApp, {
+export const gatewaySurfaceAppInstancePosture = assertSurfaceAppInstancePosture(surfaceAppInstancePosture(gatewaySurfaceApp, {
   runtimeSelectionPosture: gatewaySurfaceRuntimeSelectionPosture,
   moduleBindings: gatewaySurfaceModules,
   runnerPlan: gatewaySurfaceRunnerPlan,
@@ -253,7 +256,7 @@ export const gatewaySurfaceAppInstancePosture = surfaceAppInstancePosture(gatewa
   serviceManagerOperationPosture: gatewayServiceManagerOperationPosture,
   serviceManagerProofDigest: gatewayServiceManagerProofDigest,
   issuedAt: ISSUED_AT,
-});
+}));
 
 export const gatewayRuntimeClientModule = gatewaySurfaceModules.byKey.runtimeClient.implementation;
 
