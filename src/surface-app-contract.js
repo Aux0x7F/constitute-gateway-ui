@@ -1,6 +1,12 @@
-import { SURFACE_APP, assertSurfaceAppContract } from "../../constitute-protocol/src/index.js";
+import {
+  SURFACE_APP,
+  assertServiceManagerSecretBoundary,
+  assertSurfaceAppBootstrapContract,
+  assertSurfaceAppContract,
+} from "../../constitute-protocol/src/index.js";
 import {
   defineSurfaceAppContract,
+  surfaceAppRunnerPlan,
   surfaceAppBootstrapPosture,
   surfaceServiceManagerOperationPosture,
   surfaceServiceManagerProofDigest,
@@ -136,6 +142,18 @@ export const gatewaySurfaceModules = surfaceAppModuleImplementations(
   gatewaySurfaceApp,
 );
 
+export const gatewaySurfaceRunnerPlan = surfaceAppRunnerPlan(gatewaySurfaceApp, {
+  issuedAt: ISSUED_AT,
+});
+
+export const gatewayServiceManagerSecretBoundary = assertServiceManagerSecretBoundary(
+  gatewaySurfaceRunnerPlan.secretBoundary,
+);
+
+export const gatewaySurfaceBootstrapContract = assertSurfaceAppBootstrapContract(
+  gatewaySurfaceRunnerPlan.bootstrapContract,
+);
+
 export const gatewaySurfaceBootstrapPosture = surfaceAppBootstrapPosture(gatewaySurfaceApp, {
   issuedAt: ISSUED_AT,
 });
@@ -164,6 +182,9 @@ export const gatewayProjectionModelModule = gatewaySurfaceModuleRegistry.require
 
 export const gatewaySurfaceAttachContext = gatewaySurfaceApp.attachContext({
   productSurface: "constitute-gateway-ui",
+  runnerPlan: gatewaySurfaceRunnerPlan,
+  bootstrapContract: gatewaySurfaceBootstrapContract,
+  serviceManagerSecretBoundary: gatewayServiceManagerSecretBoundary,
   bootstrapPosture: gatewaySurfaceBootstrapPosture,
   serviceManagerOperationPosture: gatewayServiceManagerOperationPosture,
   serviceManagerProofDigest: gatewayServiceManagerProofDigest,
