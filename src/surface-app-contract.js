@@ -1,5 +1,10 @@
 import { SURFACE_APP, assertSurfaceAppContract } from "../../constitute-protocol/src/index.js";
-import { defineSurfaceAppContract } from "../../constitute-ui/src/surface-app-contract.js";
+import {
+  defineSurfaceAppContract,
+  surfaceAppBootstrapPosture,
+  surfaceServiceManagerOperationPosture,
+  surfaceServiceManagerProofDigest,
+} from "../../constitute-ui/src/surface-app-contract.js";
 import { createRuntimeSurfaceClient } from "../../constitute-ui/src/runtime-surface-client.js";
 import {
   createSurfaceModuleRegistry,
@@ -74,6 +79,23 @@ export const gatewaySurfaceAppContract = assertSurfaceAppContract({
     state: SURFACE_APP.UPDATE_POSTURE.STATIC,
     checkedAt: ISSUED_AT,
   },
+  serviceManagerPosture: {
+    managerId: "manager:manual:gateway-ui",
+    subjectRef: "service:gateway",
+    managerRef: "manager:manual:gateway-ui",
+    state: SURFACE_APP.SERVICE_MANAGER_POSTURE.MANUAL,
+    serviceRefs: ["service:gateway"],
+    capabilityRefs: ["service.manage"],
+    evidenceRefs: ["build:gateway-ui:local"],
+    issuedAt: ISSUED_AT,
+  },
+  secretBoundary: {
+    state: SURFACE_APP.SECRET_BOUNDARY.NOT_REQUIRED,
+  },
+  releasePosture: {
+    state: SURFACE_APP.RELEASE_POSTURE.STATIC,
+    evidenceRefs: ["build:gateway-ui:local"],
+  },
   issuedAt: ISSUED_AT,
 });
 
@@ -114,6 +136,22 @@ export const gatewaySurfaceModules = surfaceAppModuleImplementations(
   gatewaySurfaceApp,
 );
 
+export const gatewaySurfaceBootstrapPosture = surfaceAppBootstrapPosture(gatewaySurfaceApp, {
+  issuedAt: ISSUED_AT,
+});
+
+export const gatewayServiceManagerOperationPosture = surfaceServiceManagerOperationPosture(gatewaySurfaceApp, {
+  operation: SURFACE_APP.SERVICE_MANAGER_OPERATION.HEALTH_CHECK,
+  operationId: "operation:gateway-ui:bootstrap-health",
+  requestedAt: ISSUED_AT,
+});
+
+export const gatewayServiceManagerProofDigest = surfaceServiceManagerProofDigest(gatewaySurfaceApp, {
+  operationPosture: gatewayServiceManagerOperationPosture,
+  digestId: "proof-digest:gateway-ui:bootstrap",
+  observedAt: ISSUED_AT,
+});
+
 export const gatewayRuntimeClientModule = gatewaySurfaceModuleRegistry.require(
   gatewaySurfaceApp,
   SURFACE_APP.MODULE_ROLE.RUNTIME_CLIENT,
@@ -126,4 +164,7 @@ export const gatewayProjectionModelModule = gatewaySurfaceModuleRegistry.require
 
 export const gatewaySurfaceAttachContext = gatewaySurfaceApp.attachContext({
   productSurface: "constitute-gateway-ui",
+  bootstrapPosture: gatewaySurfaceBootstrapPosture,
+  serviceManagerOperationPosture: gatewayServiceManagerOperationPosture,
+  serviceManagerProofDigest: gatewayServiceManagerProofDigest,
 });
