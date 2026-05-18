@@ -1,5 +1,7 @@
-import { preparedServiceRegistry } from "../../constitute-ui/src/service-registry-model.js";
-import { projectionPostureSummary } from "../../constitute-ui/src/projection-read-model.js";
+import {
+  preparedServiceRegistry,
+  projectionPostureSummary,
+} from "constitute-ui";
 
 function normalizedArray(value) {
   return Array.isArray(value) ? value : [];
