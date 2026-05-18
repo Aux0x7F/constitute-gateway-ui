@@ -7,9 +7,10 @@ import {
 } from "../../constitute-protocol/src/index.js";
 import {
   defineSurfaceAppContract,
-  surfaceAppRunnerPlan,
   surfaceAppBootstrapPosture,
+  surfaceAppInstancePosture,
   surfaceAppRuntimeSelectionPosture,
+  surfaceAppRunnerPlan,
   surfaceServiceManagerOperationPosture,
   surfaceServiceManagerProofDigest,
 } from "../../constitute-ui/src/surface-app-contract.js";
@@ -243,6 +244,17 @@ export const gatewayServiceManagerProofDigest = surfaceServiceManagerProofDigest
   observedAt: ISSUED_AT,
 });
 
+export const gatewaySurfaceAppInstancePosture = surfaceAppInstancePosture(gatewaySurfaceApp, {
+  runtimeSelectionPosture: gatewaySurfaceRuntimeSelectionPosture,
+  moduleBindings: gatewaySurfaceModules,
+  runnerPlan: gatewaySurfaceRunnerPlan,
+  bootstrapContract: gatewaySurfaceBootstrapContract,
+  bootstrapPosture: gatewaySurfaceBootstrapPosture,
+  serviceManagerOperationPosture: gatewayServiceManagerOperationPosture,
+  serviceManagerProofDigest: gatewayServiceManagerProofDigest,
+  issuedAt: ISSUED_AT,
+});
+
 export const gatewayRuntimeClientModule = gatewaySurfaceModules.byKey.runtimeClient.implementation;
 
 export const gatewayProjectionModelModule = gatewaySurfaceModules.byKey.projectionModel.implementation;
@@ -251,6 +263,7 @@ export const gatewaySurfaceAttachContext = gatewaySurfaceApp.attachContext({
   productSurface: "constitute-gateway-ui",
   runtimeSelectionPosture: gatewaySurfaceRuntimeSelectionPosture,
   runnerPlan: gatewaySurfaceRunnerPlan,
+  appInstancePosture: gatewaySurfaceAppInstancePosture,
   bootstrapContract: gatewaySurfaceBootstrapContract,
   serviceManagerSecretBoundary: gatewayServiceManagerSecretBoundary,
   bootstrapPosture: gatewaySurfaceBootstrapPosture,
