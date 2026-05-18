@@ -2,12 +2,14 @@ import {
   SURFACE_APP,
   assertServiceManagerSecretBoundary,
   assertSurfaceAppBootstrapContract,
+  assertSurfaceAppManifest,
   assertSurfaceAppContract,
 } from "../../constitute-protocol/src/index.js";
 import {
   defineSurfaceAppContract,
   surfaceAppRunnerPlan,
   surfaceAppBootstrapPosture,
+  surfaceAppRuntimeSelectionPosture,
   surfaceServiceManagerOperationPosture,
   surfaceServiceManagerProofDigest,
 } from "../../constitute-ui/src/surface-app-contract.js";
@@ -109,6 +111,72 @@ export const gatewaySurfaceApp = defineSurfaceAppContract(gatewaySurfaceAppContr
   validate: assertSurfaceAppContract,
 });
 
+export const gatewaySurfaceAppManifest = assertSurfaceAppManifest({
+  kind: "surface.app.manifest",
+  manifestId: "manifest:gateway-ui",
+  appId: "constitute-gateway-ui",
+  state: SURFACE_APP.MANIFEST_VERSION_STATE.CURRENT,
+  currentAppContractRef: "app:gateway-ui",
+  currentVersion: "0.1.0",
+  defaultSourceMode: SURFACE_APP.FULFILLMENT_MODE.BUNDLED,
+  requiredModuleRoles: [
+    SURFACE_APP.MODULE_ROLE.RUNTIME_CLIENT,
+    SURFACE_APP.MODULE_ROLE.PROJECTION_MODEL,
+    SURFACE_APP.MODULE_ROLE.PRODUCT_VIEW,
+  ],
+  bundledSourceRefs: ["bundle:gateway-ui@0.1.0"],
+  compatibilityWindow: {
+    minVersion: "0.1.0",
+    maxVersion: "0.1.x",
+    protocolRef: "protocol:surface-app:v1",
+  },
+  versions: [
+    {
+      appContractRef: "app:gateway-ui",
+      version: "0.1.0",
+      state: SURFACE_APP.MANIFEST_VERSION_STATE.CURRENT,
+      sourceMode: SURFACE_APP.FULFILLMENT_MODE.BUNDLED,
+      requiredModuleRoles: [
+        SURFACE_APP.MODULE_ROLE.RUNTIME_CLIENT,
+        SURFACE_APP.MODULE_ROLE.PROJECTION_MODEL,
+        SURFACE_APP.MODULE_ROLE.PRODUCT_VIEW,
+      ],
+      compatibilityWindow: {
+        minVersion: "0.1.0",
+        maxVersion: "0.1.x",
+        protocolRef: "protocol:surface-app:v1",
+      },
+      bundledSourceRefs: ["bundle:gateway-ui@0.1.0"],
+      grantRefs: ["grant:app:gateway-ui:run"],
+      runnerRequirementRefs: ["runner:req:gateway-ui"],
+      serviceManagerRequirementRefs: ["service-manager:req:gateway-ui"],
+      compatibilityRefs: ["protocol:surface-app:v1"],
+      bootstrapContractRef: "bootstrap-contract:app:gateway-ui",
+      releaseContractRef: "release:gateway-ui:local",
+      issuedAt: ISSUED_AT,
+    },
+  ],
+  appContractRefs: ["app:gateway-ui"],
+  grantRefs: ["grant:app:gateway-ui:run"],
+  runnerRequirementRefs: ["runner:req:gateway-ui"],
+  serviceManagerRequirementRefs: ["service-manager:req:gateway-ui"],
+  compatibilityRefs: ["protocol:surface-app:v1"],
+  bootstrapContractRefs: ["bootstrap-contract:app:gateway-ui"],
+  releaseContractRefs: ["release:gateway-ui:local"],
+  authorityRefs: ["authority:gateway-ui:local"],
+  evidenceRefs: ["build:gateway-ui:local"],
+  issuedAt: ISSUED_AT,
+});
+
+export const gatewaySurfaceRuntimeSelectionPosture = surfaceAppRuntimeSelectionPosture(
+  gatewaySurfaceAppManifest,
+  [gatewaySurfaceApp],
+  {
+    runtimeVersion: "0.1.0",
+    issuedAt: ISSUED_AT,
+  },
+);
+
 export const gatewaySurfaceModuleRegistry = createSurfaceModuleRegistry([
   {
     moduleRef: "constitute-ui/runtime-surface-client@0.1.0",
@@ -139,7 +207,7 @@ export const gatewaySurfaceModuleRegistry = createSurfaceModuleRegistry([
 
 export const gatewaySurfaceModules = surfaceAppModuleBindings(
   gatewaySurfaceModuleRegistry,
-  gatewaySurfaceApp,
+  gatewaySurfaceRuntimeSelectionPosture,
   {
     runtimeClient: SURFACE_APP.MODULE_ROLE.RUNTIME_CLIENT,
     projectionModel: SURFACE_APP.MODULE_ROLE.PROJECTION_MODEL,
@@ -181,6 +249,7 @@ export const gatewayProjectionModelModule = gatewaySurfaceModules.byKey.projecti
 
 export const gatewaySurfaceAttachContext = gatewaySurfaceApp.attachContext({
   productSurface: "constitute-gateway-ui",
+  runtimeSelectionPosture: gatewaySurfaceRuntimeSelectionPosture,
   runnerPlan: gatewaySurfaceRunnerPlan,
   bootstrapContract: gatewaySurfaceBootstrapContract,
   serviceManagerSecretBoundary: gatewayServiceManagerSecretBoundary,
