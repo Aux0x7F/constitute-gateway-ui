@@ -192,6 +192,8 @@ let bootSplashDismissed = false;
 let currentActivity = "gateways";
 let runtimeReady = false;
 let runtimeSnapshot = null;
+let runtimeSnapshotMaterializationBudget = null;
+let runtimeSnapshotConsumerFloor = null;
 let runtimeDiagnosticsAgent = null;
 let runtimeClient = null;
 let preparedRuntimeSnapshot = prepareRuntimeSnapshotModel(null);
@@ -429,6 +431,12 @@ function attachRuntime() {
     onSnapshot: (snapshot) => {
       absorbRuntimeSnapshot(snapshot || null);
       dismissBootSplash();
+    },
+    onMaterializationBudget: (budget) => {
+      runtimeSnapshotMaterializationBudget = budget && typeof budget === "object" ? budget : null;
+    },
+    onConsumerFloor: (floor) => {
+      runtimeSnapshotConsumerFloor = floor && typeof floor === "object" ? floor : null;
     },
     onAttachTimeout: () => {
       if (!bootSplashDismissed) dismissBootSplash();
@@ -913,7 +921,11 @@ function formatAge(ts) {
 function renderSnapshotState() {
   const activeFieldState = captureActiveFieldState(document);
   setConnectionSummaryFromSnapshot();
-  preparedRuntimeSnapshot = prepareRuntimeSnapshotModel(runtimeSnapshot, { browserStorage: window.localStorage });
+  preparedRuntimeSnapshot = prepareRuntimeSnapshotModel(runtimeSnapshot, {
+    browserStorage: window.localStorage,
+    materializationBudget: runtimeSnapshotMaterializationBudget,
+    consumerFloor: runtimeSnapshotConsumerFloor,
+  });
   const records = preparedRuntimeSnapshot.records;
   renderGatewayList(records);
   renderServiceList(records);

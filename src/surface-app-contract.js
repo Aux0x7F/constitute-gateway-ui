@@ -95,6 +95,7 @@ export const gatewaySurfaceAppContract = assertSurfaceAppContract({
   },
   releasePosture: {
     state: SURFACE_APP.RELEASE_POSTURE.STATIC,
+    releaseRef: "release:gateway-ui:local",
     evidenceRefs: ["build:gateway-ui:local"],
   },
   issuedAt: ISSUED_AT,

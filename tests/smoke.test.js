@@ -86,3 +86,22 @@ test("gateway network panel consumes shared shell posture", () => {
   assert.match(source, /value: shellState\.services\.state/);
   assert.doesNotMatch(source, /const shellState = runtimeSnapshot\?\.shell \|\| \{\}/);
 });
+
+test("gateway runtime model carries materialization budget posture", async () => {
+  const { prepareRuntimeSnapshotModel, runtimeStatusRows } = await import("../src/runtime-model.js");
+  const prepared = prepareRuntimeSnapshotModel(
+    { projections: { "gateway.health": {} }, runtimeEvents: [{}, {}] },
+    {
+      materializationBudget: {
+        budgetId: "runtime.gateway.snapshot",
+        copyRole: "projection",
+        payloadClass: "projection",
+        limits: { estimatedSnapshotBytes: 1024 },
+      },
+      consumerFloor: { floorId: "floor:runtime.gateway.snapshot", lagState: "current" },
+    },
+  );
+  assert.equal(prepared.materialization.state, "withinBudget");
+  assert.equal(prepared.materialization.budgetId, "runtime.gateway.snapshot");
+  assert.equal(runtimeStatusRows({}, prepared, []).some((row) => row.label === "Materialization"), true);
+});
