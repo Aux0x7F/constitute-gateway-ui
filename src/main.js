@@ -1,6 +1,7 @@
 import "constitute-ui/styles.css";
 import "./styles.css";
 import {
+  prepareRuntimeReadModel,
   renderActionList,
   renderFirstPartyShell,
   setConnectionStateText,
@@ -20,7 +21,6 @@ import {
 import { RUNTIME_DIAGNOSTIC_OPERATOR_PLANES, attachRuntimeDiagnostics } from "../../constitute-account/runtime-diagnostics.js";
 import {
   browserStorageShellContext,
-  deriveRuntimeShellState,
 } from "constitute-ui/runtime-shell-state";
 import {
   gatewayRuntimeClientModule,
@@ -191,9 +191,9 @@ let accountCenterOpen = false;
 let bootSplashDismissed = false;
 let currentActivity = "gateways";
 let runtimeReady = false;
-let runtimeSnapshot = null;
-let runtimeSnapshotMaterializationBudget = null;
-let runtimeSnapshotConsumerFloor = null;
+let runtimeReadModel = prepareRuntimeReadModel(null, runtimeReadModelOptions());
+let runtimeMaterializationBudget = null;
+let runtimeConsumerFloor = null;
 let runtimeDiagnosticsAgent = null;
 let runtimeClient = null;
 let preparedRuntimeSnapshot = prepareRuntimeSnapshotModel(null);
@@ -374,6 +374,21 @@ function normalizedArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function runtimeReadModelOptions() {
+  return {
+    context: browserStorageShellContext(),
+    now: Date.now(),
+    clientId: "gateway-ui",
+    surface: "constitute-gateway-ui",
+  };
+}
+
+function currentRuntimeSnapshot() {
+  return runtimeClient?.snapshot && typeof runtimeClient.snapshot === "object"
+    ? runtimeClient.snapshot
+    : null;
+}
+
 function runtimeCall(type, payload = {}, timeoutMs = 20_000) {
   return runtimeClient?.call(type, payload, timeoutMs)
     || Promise.reject(new Error("shared runtime is unavailable"));
@@ -390,10 +405,15 @@ async function runtimeBrokerCall(type, payload = {}, timeoutMs = 20_000, reason 
 }
 
 function absorbRuntimeSnapshot(snapshot) {
-  runtimeSnapshot = snapshot && typeof snapshot === "object" ? snapshot : null;
-  runtimeReady = Boolean(runtimeSnapshot);
-  renderSnapshotState();
-  const managed = runtimeSnapshot?.managedAppliances || {};
+  const snap = snapshot && typeof snapshot === "object" ? snapshot : null;
+  runtimeReadModel = prepareRuntimeReadModel(snap, {
+    ...runtimeReadModelOptions(),
+    materializationBudget: runtimeMaterializationBudget,
+    consumerFloor: runtimeConsumerFloor,
+  });
+  runtimeReady = runtimeReadModel.ready;
+  renderSnapshotState(snap);
+  const managed = snap?.managedAppliances || {};
   const projectedCount = normalizedArray(managed?.owned).length
     + normalizedArray(managed?.granted).length
     + normalizedArray(managed?.discoverable).length;
@@ -416,6 +436,7 @@ function attachRuntime() {
     debugInfo: runtimeAttachDebugInfo(window.location.origin),
     logPrefix: "gateway-ui",
     attachContext: gatewaySurfaceAttachContext,
+    readModelOptions: runtimeReadModelOptions(),
     onPort: (port) => {
       runtimeDiagnosticsAgent = attachRuntimeDiagnostics({
         port,
@@ -432,11 +453,15 @@ function attachRuntime() {
       absorbRuntimeSnapshot(snapshot || null);
       dismissBootSplash();
     },
+    onReadModel: (readModel) => {
+      runtimeReadModel = readModel;
+      runtimeReady = readModel.ready;
+    },
     onMaterializationBudget: (budget) => {
-      runtimeSnapshotMaterializationBudget = budget && typeof budget === "object" ? budget : null;
+      runtimeMaterializationBudget = budget && typeof budget === "object" ? budget : null;
     },
     onConsumerFloor: (floor) => {
-      runtimeSnapshotConsumerFloor = floor && typeof floor === "object" ? floor : null;
+      runtimeConsumerFloor = floor && typeof floor === "object" ? floor : null;
     },
     onAttachTimeout: () => {
       if (!bootSplashDismissed) dismissBootSplash();
@@ -459,38 +484,40 @@ function attachRuntime() {
 }
 
 function identitySummary() {
-  const shellState = deriveRuntimeShellState(runtimeSnapshot, { context: browserStorageShellContext() });
+  const shellState = runtimeReadModel.shell || {};
   return {
-    linked: shellState.identity.linked,
-    identityId: shellState.identity.identityId,
-    label: shellState.identity.handle,
-    authorityState: shellState.identity.authorityState,
+    linked: shellState.identity?.linked === true,
+    identityId: shellState.identity?.identityId || "",
+    label: shellState.identity?.handle || "@unlinked",
+    authorityState: shellState.identity?.authorityState || "unknown",
   };
 }
 
 function setConnectionSummaryFromSnapshot() {
-  const shellState = deriveRuntimeShellState(runtimeSnapshot, { context: browserStorageShellContext() });
+  const shellState = runtimeReadModel.shell || {};
+  const identity = shellState.identity || {};
+  const connection = shellState.connection || {};
 
-  identityHandleEl.textContent = shellState.identity.handle;
-  identityHandleEl.classList.toggle("identityHandle-linked", shellState.identity.linked);
-  identityHandleEl.classList.toggle("identityHandle-unlinked", !shellState.identity.linked);
-  identityHandleEl.title = shellState.identity.title;
-  identityHandleEl.setAttribute("aria-label", shellState.identity.ariaLabel);
+  identityHandleEl.textContent = identity.handle || "@unlinked";
+  identityHandleEl.classList.toggle("identityHandle-linked", identity.linked === true);
+  identityHandleEl.classList.toggle("identityHandle-unlinked", identity.linked !== true);
+  identityHandleEl.title = identity.title || "Identity not linked yet";
+  identityHandleEl.setAttribute("aria-label", identity.ariaLabel || "Identity not linked");
 
-  const connectionLabel = shellState.connection.label;
+  const connectionLabel = connection.label || "Offline";
   setConnectionStateText(connStateTextEl, {
     label: connectionLabel,
-    toneClass: shellState.connection.toneClass,
+    toneClass: connection.toneClass || "connStateText-offline",
   });
   popConnectionEl.textContent = connectionLabel;
-  popRelayEl.textContent = shellState.relay.state;
-  popGatewayEl.textContent = shellState.gateway.state;
-  popServicesEl.textContent = shellState.services.state;
-  popConnectionReasonEl.textContent = shellState.connection.reason;
+  popRelayEl.textContent = shellState.relay?.state || "unknown";
+  popGatewayEl.textContent = shellState.gateway?.state || "unknown";
+  popServicesEl.textContent = shellState.services?.state || "unknown";
+  popConnectionReasonEl.textContent = connection.reason || "";
 }
 
 function labelForIdentity(identityId) {
-  const runtimeLabel = String(runtimeSnapshot?.shell?.identity?.label || "").trim().replace(/^@+/, "");
+  const runtimeLabel = String(runtimeReadModel.shell?.identity?.handle || "").trim().replace(/^@+/, "");
   if (runtimeLabel) return `@${runtimeLabel}`;
   const raw = String(identityId || "").trim();
   if (!raw) return "@unlinked";
@@ -798,7 +825,7 @@ function renderServiceList(records) {
             <div>service ${escapeHtml(service || "unknown")}</div>
             <div>status <span class="gatewayStatusTone-${escapeHtml(toneForLabel(status))}">${escapeHtml(status)}</span></div>
             <div>host gateway ${escapeHtml(record.__hostGatewayLabel || shortPk(record?.hostGatewayPk || record?.host_gateway_pk || ""))}</div>
-            <div>source ${escapeHtml(record.__source === "serviceRegistry" ? "service registry" : record.__source === "serviceCatalog" ? "runtime catalog" : "runtime snapshot")}</div>
+            <div>source ${escapeHtml(record.__source === "serviceRegistry" ? "service registry" : record.__source === "serviceCatalog" ? "runtime catalog" : "runtime baseline")}</div>
             <div>freshness ${escapeHtml(freshnessLabel(record))}</div>
             ${factRows.map((fact) => `<div>${escapeHtml(fact)}</div>`).join("")}
           </div>
@@ -849,19 +876,19 @@ function renderRows(container, rows) {
 }
 
 function renderNetworkView(records) {
-  const shellState = deriveRuntimeShellState(runtimeSnapshot, { context: browserStorageShellContext() });
+  const shellState = runtimeReadModel.shell || {};
   renderRows(networkSummaryEl, [
-    { label: "Connection", value: shellState.connection.label, tone: toneForLabel(shellState.connection.label) },
-    { label: "Relay", value: shellState.relay.state, tone: toneForLabel(shellState.relay.state) },
-    { label: "Services", value: shellState.services.state, tone: toneForLabel(shellState.services.state) },
+    { label: "Connection", value: shellState.connection?.label || "Offline", tone: toneForLabel(shellState.connection?.label) },
+    { label: "Relay", value: shellState.relay?.state || "unknown", tone: toneForLabel(shellState.relay?.state) },
+    { label: "Services", value: shellState.services?.state || "unknown", tone: toneForLabel(shellState.services?.state) },
   ]);
   renderRows(zonesSummaryEl, [
     {
       label: "Identity authority",
-      value: shellState.identity.linked ? titleCaseWords(shellState.identity.authorityState) : "Unlinked",
-      tone: shellState.identity.linked && shellState.identity.authorityState !== "unlinked" ? "good" : "warn",
+      value: shellState.identity?.linked ? titleCaseWords(shellState.identity?.authorityState) : "Unlinked",
+      tone: shellState.identity?.linked && shellState.identity?.authorityState !== "unlinked" ? "good" : "warn",
     },
-    { label: "Runtime snapshot age", value: formatAge(runtimeSnapshot?.updatedAt), tone: "neutral" },
+    { label: "Runtime read model age", value: formatAge(runtimeReadModel.updatedAt), tone: "neutral" },
   ]);
 }
 
@@ -873,8 +900,9 @@ function renderSecurityView(records) {
 }
 
 function renderRuntimeView(records, prepared = preparedRuntimeSnapshot) {
-  const issue = runtimeSnapshot?.managedServiceIssue || null;
-  renderRows(runtimeSummaryEl, runtimeStatusRows(runtimeSnapshot, prepared, records, RUNTIME_WORKER_BUILD_ID));
+  const snapshot = currentRuntimeSnapshot();
+  const issue = snapshot?.managedServiceIssue || null;
+  renderRows(runtimeSummaryEl, runtimeStatusRows(snapshot, prepared, records, RUNTIME_WORKER_BUILD_ID));
   if (!issue) {
     renderRows(issueSummaryEl, [
       { label: "Managed services", value: "No active runtime issue", tone: "good" },
@@ -918,13 +946,13 @@ function formatAge(ts) {
   return `${ageDay}d ago`;
 }
 
-function renderSnapshotState() {
+function renderSnapshotState(snapshot = currentRuntimeSnapshot()) {
   const activeFieldState = captureActiveFieldState(document);
   setConnectionSummaryFromSnapshot();
-  preparedRuntimeSnapshot = prepareRuntimeSnapshotModel(runtimeSnapshot, {
+  preparedRuntimeSnapshot = prepareRuntimeSnapshotModel(snapshot, {
     browserStorage: window.localStorage,
-    materializationBudget: runtimeSnapshotMaterializationBudget,
-    consumerFloor: runtimeSnapshotConsumerFloor,
+    materializationBudget: runtimeMaterializationBudget,
+    consumerFloor: runtimeConsumerFloor,
   });
   const records = preparedRuntimeSnapshot.records;
   renderGatewayList(records);
@@ -1065,7 +1093,7 @@ function bindUi() {
   btnGatewayRefreshEl.addEventListener("click", () => {
     void runtimeCall("runtime.snapshot.get").then((snapshot) => {
       absorbRuntimeSnapshot(snapshot || null);
-      addNotification("good", "Snapshot refreshed", "Shared runtime snapshot updated.");
+      addNotification("good", "Snapshot refreshed", "Shared runtime baseline updated.");
     }).catch((error) => {
       addNotification("bad", "Snapshot refresh failed", String(error?.message || error));
     });

@@ -72,7 +72,7 @@ function normalizeManagedRecords(snapshot) {
       out.push({
         ...raw,
         __scope: bucket.scope,
-        __source: "runtimeSnapshot",
+        __source: "runtimeBaseline",
       });
     }
   }

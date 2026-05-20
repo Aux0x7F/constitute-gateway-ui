@@ -81,9 +81,11 @@ test("gateway ui declares a surface app contract", async () => {
 test("gateway network panel consumes shared shell posture", () => {
   const source = readFileSync(resolve(here, "../src/main.js"), "utf8");
   assert.match(source, /function renderNetworkView\(records\)/);
-  assert.match(source, /const shellState = deriveRuntimeShellState\(runtimeSnapshot, \{ context: browserStorageShellContext\(\) \}\)/);
-  assert.match(source, /value: shellState\.connection\.label/);
-  assert.match(source, /value: shellState\.services\.state/);
+  assert.match(source, /prepareRuntimeReadModel/);
+  assert.match(source, /const shellState = runtimeReadModel\.shell \|\| \{\}/);
+  assert.match(source, /value: shellState\.connection\?\.label \|\| "Offline"/);
+  assert.match(source, /value: shellState\.services\?\.state \|\| "unknown"/);
+  assert.doesNotMatch(source, /deriveRuntimeShellState\(runtimeSnapshot/);
   assert.doesNotMatch(source, /const shellState = runtimeSnapshot\?\.shell \|\| \{\}/);
 });
 
