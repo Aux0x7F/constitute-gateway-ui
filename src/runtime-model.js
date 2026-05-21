@@ -1,4 +1,5 @@
 import {
+  deriveRuntimeMaterializationPosture,
   preparedServiceRegistry,
   projectionPostureSummary,
 } from "constitute-ui";
@@ -71,7 +72,7 @@ function normalizeManagedRecords(snapshot) {
       out.push({
         ...raw,
         __scope: bucket.scope,
-        __source: "runtimeSnapshot",
+        __source: "runtimeBaseline",
       });
     }
   }
@@ -250,6 +251,10 @@ export function prepareProjectionStatus(snapshot) {
 export function prepareRuntimeSnapshotModel(snapshot, options = {}) {
   const records = normalizeRuntimeRecords(snapshot, options);
   const registry = preparedServiceRegistry(snapshot || {});
+  const materialization = deriveRuntimeMaterializationPosture(snapshot || {}, {
+    materializationBudget: options.materializationBudget,
+    consumerFloor: options.consumerFloor,
+  });
   return {
     records,
     serviceCatalog: {
@@ -262,12 +267,14 @@ export function prepareRuntimeSnapshotModel(snapshot, options = {}) {
     },
     edge: prepareSwarmEdgeStatus(snapshot),
     projection: prepareProjectionStatus(snapshot),
+    materialization,
   };
 }
 
 export function runtimeStatusRows(snapshot, prepared, records, fallbackBuildId = "runtime-unknown") {
   const edge = normalizeObject(prepared?.edge);
   const projection = normalizeObject(prepared?.projection);
+  const materialization = normalizeObject(prepared?.materialization);
   const serviceCatalog = normalizeObject(prepared?.serviceCatalog);
   const resource = normalizeObject(snapshot?.resource);
   const retention = normalizeObject(snapshot?.retention);
@@ -311,6 +318,14 @@ export function runtimeStatusRows(snapshot, prepared, records, fallbackBuildId =
       label: "Projection sync",
       value: `${Number(projection.projectionCount || 0)} retained / ${projection.stateLabel || "none"}`,
       tone: Number(projection.projectionCount || 0) > 0 ? "good" : "warn",
+    },
+    {
+      label: "Materialization",
+      value: [
+        materialization.state || "unknown",
+        materialization.budgetId || `${Number(materialization.budgetCount || 0)} budgets`,
+      ].filter(Boolean).join(" / "),
+      tone: ["withinBudget", "materialized"].includes(String(materialization.state || "")) ? "good" : "warn",
     },
     {
       label: "Resource posture",

@@ -81,8 +81,29 @@ test("gateway ui declares a surface app contract", async () => {
 test("gateway network panel consumes shared shell posture", () => {
   const source = readFileSync(resolve(here, "../src/main.js"), "utf8");
   assert.match(source, /function renderNetworkView\(records\)/);
-  assert.match(source, /const shellState = deriveRuntimeShellState\(runtimeSnapshot, \{ context: browserStorageShellContext\(\) \}\)/);
-  assert.match(source, /value: shellState\.connection\.label/);
-  assert.match(source, /value: shellState\.services\.state/);
+  assert.match(source, /prepareRuntimeReadModel/);
+  assert.match(source, /const shellState = runtimeReadModel\.shell \|\| \{\}/);
+  assert.match(source, /value: shellState\.connection\?\.label \|\| "Offline"/);
+  assert.match(source, /value: shellState\.services\?\.state \|\| "unknown"/);
+  assert.doesNotMatch(source, /deriveRuntimeShellState\(runtimeSnapshot/);
   assert.doesNotMatch(source, /const shellState = runtimeSnapshot\?\.shell \|\| \{\}/);
+});
+
+test("gateway runtime model carries materialization budget posture", async () => {
+  const { prepareRuntimeSnapshotModel, runtimeStatusRows } = await import("../src/runtime-model.js");
+  const prepared = prepareRuntimeSnapshotModel(
+    { projections: { "gateway.health": {} }, runtimeEvents: [{}, {}] },
+    {
+      materializationBudget: {
+        budgetId: "runtime.gateway.snapshot",
+        copyRole: "projection",
+        payloadClass: "projection",
+        limits: { estimatedSnapshotBytes: 1024 },
+      },
+      consumerFloor: { floorId: "floor:runtime.gateway.snapshot", lagState: "current" },
+    },
+  );
+  assert.equal(prepared.materialization.state, "withinBudget");
+  assert.equal(prepared.materialization.budgetId, "runtime.gateway.snapshot");
+  assert.equal(runtimeStatusRows({}, prepared, []).some((row) => row.label === "Materialization"), true);
 });
