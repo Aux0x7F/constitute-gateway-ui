@@ -1,5 +1,7 @@
 import {
   deriveRuntimeMaterializationPosture,
+  prepareServiceHostFabricPosture,
+  prepareServiceLaunchPosture,
   prepareRuntimeHostFabricPosture,
   prepareRuntimeTargetPosture,
   preparedServiceRegistry,
@@ -51,61 +53,12 @@ function postureReason(value) {
   return String(posture.cleanupReason || posture.reason || posture.blockedReason || "").trim();
 }
 
-function hostFabricPosture(value) {
-  const fabric = normalizeObject(value);
-  if (!Object.keys(fabric).length) {
-    return { state: "missing", blockedReasons: [], label: "missing" };
-  }
-  const state = String(fabric.state || fabric.fulfillmentPlan?.state || fabric.lifecyclePlan?.state || "unknown").trim() || "unknown";
-  const blockedReasons = normalizedArray(fabric.blockedReasons).map((reason) => String(reason || "").trim()).filter(Boolean);
-  const handoffRef = String(fabric.associationHandoffRef || "").trim();
-  return {
-    state,
-    blockedReasons,
-    handoffRef,
-    label: [
-      state,
-      blockedReasons.length ? `blocked ${blockedReasons.slice(0, 2).join(", ")}` : "",
-      handoffRef ? `handoff ${shortRef(handoffRef)}` : "",
-    ].filter(Boolean).join(" / "),
-  };
-}
-
 export function serviceLaunchPosture(record) {
-  const source = String(record?.__source || "").trim();
-  const fabric = normalizeObject(record?.hostFabric);
-  const legacyFallback = normalizeObject(record?.legacyPathFallback || record?.legacy_path_fallback);
-  if (Object.keys(legacyFallback).length > 0) {
-    const reason = String(legacyFallback.reason || "legacy path fallback is quarantined").trim();
-    return {
-      state: "blocked",
-      reason,
-      label: `blocked / ${reason}`,
-    };
-  }
-  if (source !== "serviceRegistry") {
-    const reason = source
-      ? `service is projected from ${source}, not service registry`
-      : "service registry posture is missing";
-    return {
-      state: "blocked",
-      reason,
-      label: `blocked / ${reason}`,
-    };
-  }
-  const blockedReasons = normalizedArray(fabric.blockedReasons).map((reason) => String(reason || "").trim()).filter(Boolean);
-  if (String(fabric.state || "").trim() !== "ready" || blockedReasons.length > 0) {
-    const reason = blockedReasons[0] || "host fabric is not ready";
-    return {
-      state: "blocked",
-      reason,
-      label: `blocked / ${reason}`,
-    };
-  }
+  const posture = prepareServiceLaunchPosture(record);
   return {
-    state: "ready",
-    reason: "",
-    label: "ready",
+    state: posture.state,
+    reason: posture.reason,
+    label: posture.label,
   };
 }
 
@@ -221,7 +174,7 @@ function serviceCatalogRecords(snapshot) {
       hostGatewayPk: String(entry.hostGatewayPk || entry.host_gateway_pk || "").trim(),
       label: label || service,
       status: String(health.status || entry.status || "").trim(),
-      hostFabric: hostFabricPosture(entry.hostFabric),
+      hostFabric: prepareServiceHostFabricPosture(entry.hostFabric),
       facts: {
         ...(normalizeObject(entry.facts)),
         health,
