@@ -31,6 +31,11 @@ test("runtime model uses retained service catalog records", () => {
           hostGatewayPk: "gateway-1",
           health: { status: "online", events: 42, producers: 2, storageStatus: "ok" },
           surface: { summary: "retained logging surface" },
+          hostFabric: {
+            state: "ready",
+            associationHandoffRef: "handoff:gateway:gateway-1:initial-owner",
+            blockedReasons: [],
+          },
         }],
       },
       services: [{
@@ -46,10 +51,13 @@ test("runtime model uses retained service catalog records", () => {
   assert.equal(prepared.serviceCatalog.source, "serviceRegistry");
   assert.equal(prepared.serviceCatalog.state, "ready");
   assert.equal(prepared.serviceCatalog.claimCount, 1);
+  assert.equal(prepared.serviceCatalog.hostFabricReadyCount, 1);
+  assert.equal(prepared.serviceCatalog.hostFabricBlockedCount, 0);
   assert.equal(prepared.records.some((record) => record.role === "gateway"), true);
   const logging = prepared.records.find((record) => record.service === "logging");
   assert.equal(logging.__source, "serviceRegistry");
   assert.equal(logging.status, "online");
+  assert.equal(logging.hostFabric.state, "ready");
   assert.equal(logging.facts.health.events, 42);
 });
 
@@ -120,6 +128,7 @@ test("runtime model surfaces swarm edge queue reject and projection repair statu
     tone: "warn",
   });
   assert.equal(rows.find((row) => row.label === "Service catalog").value, "0 services / missing");
+  assert.equal(rows.find((row) => row.label === "Host fabric").value, "0 ready / 0 blocked");
   assert.equal(rows.find((row) => row.label === "Projection sync").value, "1 retained / completeEnough 1");
   assert.deepEqual(rows.find((row) => row.label === "Resource posture"), {
     label: "Resource posture",

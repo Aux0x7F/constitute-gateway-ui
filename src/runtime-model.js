@@ -49,6 +49,33 @@ function postureReason(value) {
   return String(posture.cleanupReason || posture.reason || posture.blockedReason || "").trim();
 }
 
+function hostFabricPosture(value) {
+  const fabric = normalizeObject(value);
+  if (!Object.keys(fabric).length) {
+    return { state: "missing", blockedReasons: [], label: "missing" };
+  }
+  const state = String(fabric.state || fabric.fulfillmentPlan?.state || fabric.lifecyclePlan?.state || "unknown").trim() || "unknown";
+  const blockedReasons = normalizedArray(fabric.blockedReasons).map((reason) => String(reason || "").trim()).filter(Boolean);
+  const handoffRef = String(fabric.associationHandoffRef || "").trim();
+  return {
+    state,
+    blockedReasons,
+    handoffRef,
+    label: [
+      state,
+      blockedReasons.length ? `blocked ${blockedReasons.slice(0, 2).join(", ")}` : "",
+      handoffRef ? `handoff ${shortRef(handoffRef)}` : "",
+    ].filter(Boolean).join(" / "),
+  };
+}
+
+function shortRef(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (raw.length <= 18) return raw;
+  return `${raw.slice(0, 10)}...${raw.slice(-5)}`;
+}
+
 function serviceRecordKey(record) {
   const service = normalizeRole(record?.service || record?.slug || record?.name || "");
   const servicePk = String(record?.devicePk || record?.pk || record?.servicePk || record?.service_pk || "").trim();
@@ -154,6 +181,7 @@ function serviceCatalogRecords(snapshot) {
       hostGatewayPk: String(entry.hostGatewayPk || entry.host_gateway_pk || "").trim(),
       label: label || service,
       status: String(health.status || entry.status || "").trim(),
+      hostFabric: hostFabricPosture(entry.hostFabric),
       facts: {
         ...(normalizeObject(entry.facts)),
         health,
@@ -251,6 +279,9 @@ export function prepareProjectionStatus(snapshot) {
 export function prepareRuntimeSnapshotModel(snapshot, options = {}) {
   const records = normalizeRuntimeRecords(snapshot, options);
   const registry = preparedServiceRegistry(snapshot || {});
+  const serviceRecords = records.filter((record) => normalizeRole(record.service));
+  const fabricReadyCount = serviceRecords.filter((record) => normalizeObject(record.hostFabric).state === "ready").length;
+  const fabricBlockedCount = serviceRecords.filter((record) => normalizedArray(normalizeObject(record.hostFabric).blockedReasons).length > 0).length;
   const materialization = deriveRuntimeMaterializationPosture(snapshot || {}, {
     materializationBudget: options.materializationBudget,
     consumerFloor: options.consumerFloor,
@@ -264,6 +295,8 @@ export function prepareRuntimeSnapshotModel(snapshot, options = {}) {
       state: registry.state,
       claimCount: registry.claimCount,
       entryCount: registry.entryCount,
+      hostFabricReadyCount: fabricReadyCount,
+      hostFabricBlockedCount: fabricBlockedCount,
     },
     edge: prepareSwarmEdgeStatus(snapshot),
     projection: prepareProjectionStatus(snapshot),
@@ -288,6 +321,11 @@ export function runtimeStatusRows(snapshot, prepared, records, fallbackBuildId =
       label: "Service catalog",
       value: `${Number(serviceCatalog.serviceCount || 0)} services / ${serviceCatalog.state || "unknown"}`,
       tone: Number(serviceCatalog.serviceCount || 0) > 0 ? "good" : "warn",
+    },
+    {
+      label: "Host fabric",
+      value: `${Number(serviceCatalog.hostFabricReadyCount || 0)} ready / ${Number(serviceCatalog.hostFabricBlockedCount || 0)} blocked`,
+      tone: Number(serviceCatalog.hostFabricBlockedCount || 0) === 0 && Number(serviceCatalog.hostFabricReadyCount || 0) > 0 ? "good" : "warn",
     },
     {
       label: "Swarm edge",
