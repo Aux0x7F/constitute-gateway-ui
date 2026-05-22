@@ -6,6 +6,7 @@ import {
   prepareSwarmEdgeStatus,
   restoreActiveFieldState,
   runtimeStatusRows,
+  serviceLaunchPosture,
 } from "../src/runtime-model.js";
 
 test("runtime model uses retained service catalog records", () => {
@@ -59,6 +60,39 @@ test("runtime model uses retained service catalog records", () => {
   assert.equal(logging.status, "online");
   assert.equal(logging.hostFabric.state, "ready");
   assert.equal(logging.facts.health.events, 42);
+  assert.equal(serviceLaunchPosture(logging).state, "ready");
+});
+
+test("service launch posture blocks non-registry and legacy fallback records", () => {
+  assert.deepEqual(serviceLaunchPosture({
+    service: "nvr",
+    __source: "browserStorageCache",
+    hostFabric: { state: "ready", blockedReasons: [] },
+  }), {
+    state: "blocked",
+    reason: "service is projected from browserStorageCache, not service registry",
+    label: "blocked / service is projected from browserStorageCache, not service registry",
+  });
+
+  assert.deepEqual(serviceLaunchPosture({
+    service: "nvr",
+    __source: "serviceRegistry",
+    hostFabric: { state: "ready", blockedReasons: [] },
+    legacyPathFallback: {
+      state: "legacyPathFallback",
+      reason: "retained cache selected service context",
+    },
+  }), {
+    state: "blocked",
+    reason: "retained cache selected service context",
+    label: "blocked / retained cache selected service context",
+  });
+
+  assert.equal(serviceLaunchPosture({
+    service: "nvr",
+    __source: "serviceRegistry",
+    hostFabric: { state: "blocked", blockedReasons: ["association missing"] },
+  }).reason, "association missing");
 });
 
 test("runtime model surfaces swarm edge queue reject and projection repair status", () => {

@@ -69,6 +69,44 @@ function hostFabricPosture(value) {
   };
 }
 
+export function serviceLaunchPosture(record) {
+  const source = String(record?.__source || "").trim();
+  const fabric = normalizeObject(record?.hostFabric);
+  const legacyFallback = normalizeObject(record?.legacyPathFallback || record?.legacy_path_fallback);
+  if (Object.keys(legacyFallback).length > 0) {
+    const reason = String(legacyFallback.reason || "legacy path fallback is quarantined").trim();
+    return {
+      state: "blocked",
+      reason,
+      label: `blocked / ${reason}`,
+    };
+  }
+  if (source !== "serviceRegistry") {
+    const reason = source
+      ? `service is projected from ${source}, not service registry`
+      : "service registry posture is missing";
+    return {
+      state: "blocked",
+      reason,
+      label: `blocked / ${reason}`,
+    };
+  }
+  const blockedReasons = normalizedArray(fabric.blockedReasons).map((reason) => String(reason || "").trim()).filter(Boolean);
+  if (String(fabric.state || "").trim() !== "ready" || blockedReasons.length > 0) {
+    const reason = blockedReasons[0] || "host fabric is not ready";
+    return {
+      state: "blocked",
+      reason,
+      label: `blocked / ${reason}`,
+    };
+  }
+  return {
+    state: "ready",
+    reason: "",
+    label: "ready",
+  };
+}
+
 function shortRef(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";

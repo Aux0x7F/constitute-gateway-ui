@@ -11,6 +11,7 @@ import {
   prepareRuntimeSnapshotModel,
   restoreActiveFieldState,
   runtimeStatusRows,
+  serviceLaunchPosture,
 } from "./runtime-model.js";
 import {
   PLATFORM_RUNTIME_BUILD_ID as RUNTIME_WORKER_BUILD_ID,
@@ -566,6 +567,7 @@ function hostedNvrForGateway(gatewayRecord, records) {
   return {
     ...embedded,
     __scope: gatewayRecord.__scope,
+    __source: embedded.__source || gatewayRecord.__source || "runtimeBaseline",
     hostGatewayPk: String(embedded.hostGatewayPk || embedded.host_gateway_pk || gatewayPk).trim(),
   };
 }
@@ -632,6 +634,7 @@ function collectInstalledServices(records) {
       service,
       hostGatewayPk,
       __scope: record.__scope || gatewayRecord?.__scope,
+      __source: record.__source || gatewayRecord?.__source || "runtimeBaseline",
       __hostGatewayLabel: gatewayRecord ? gatewayTitle(gatewayRecord) : "",
     };
     byKey.set(key, mergeServiceRecord(byKey.get(key), normalized));
@@ -742,6 +745,7 @@ function renderGatewayList(records) {
     `;
     const actions = document.createElement("div");
     actions.className = "gatewayActionStrip";
+    const nvrLaunch = nvrRecord ? serviceLaunchPosture(nvrRecord) : { state: "blocked", reason: "NVR service is not projected for this gateway yet." };
     const zoneInput = document.createElement("input");
     zoneInput.type = "text";
     zoneInput.className = "gatewayInlineInput";
@@ -758,8 +762,8 @@ function renderGatewayList(records) {
         hostGatewayPk: gatewayPk,
         service: "nvr",
       }, {});
-    }, !nvrRecord);
-    if (!nvrRecord) openNvrButton.title = "NVR service is not projected for this gateway yet.";
+    }, !nvrRecord || nvrLaunch.state !== "ready");
+    if (!nvrRecord || nvrLaunch.state !== "ready") openNvrButton.title = nvrLaunch.reason || "NVR service is not actionable yet.";
     actions.appendChild(openNvrButton);
 
     if (!nvrRecord && !gatewayReportsNvrService(record)) {
@@ -794,6 +798,8 @@ function renderServiceList(records) {
     const servicePk = String(record?.devicePk || record?.pk || "").trim();
     const service = serviceSlug(record);
     const status = serviceStatus(record);
+    const launch = serviceLaunchPosture(record);
+    const launchBlocked = launch.state !== "ready";
     const facts = record?.facts && typeof record.facts === "object" ? record.facts : {};
     const health = facts?.health && typeof facts.health === "object" ? facts.health : {};
     const factRows = service === "storage"
@@ -826,6 +832,7 @@ function renderServiceList(records) {
             <div>status <span class="gatewayStatusTone-${escapeHtml(toneForLabel(status))}">${escapeHtml(status)}</span></div>
             <div>host gateway ${escapeHtml(record.__hostGatewayLabel || shortPk(record?.hostGatewayPk || record?.host_gateway_pk || ""))}</div>
             <div>host fabric ${escapeHtml(record.hostFabric?.label || "missing")}</div>
+            <div>launch ${escapeHtml(launch.label || launch.state || "unknown")}</div>
             <div>source ${escapeHtml(record.__source === "serviceRegistry" ? "service registry" : record.__source === "serviceCatalog" ? "runtime catalog" : "runtime baseline")}</div>
             <div>freshness ${escapeHtml(freshnessLabel(record))}</div>
             ${factRows.map((fact) => `<div>${escapeHtml(fact)}</div>`).join("")}
@@ -839,14 +846,14 @@ function renderServiceList(records) {
     if (service === "nvr") {
       actions.appendChild(actionButton("Open Security Cameras", () => {
         void openSecurityCameras(record, {});
-      }, !servicePk));
+      }, !servicePk || launchBlocked));
       actions.appendChild(actionButton("Camera Settings", () => {
         void openSecurityCameras(record, { activity: "settings" });
-      }, !servicePk));
+      }, !servicePk || launchBlocked));
     } else if (service === "logging") {
       actions.appendChild(actionButton("Open Logging", () => {
         void openLogging(record);
-      }, !servicePk));
+      }, !servicePk || launchBlocked));
     }
     if (actions.childElementCount > 0) row.appendChild(actions);
     serviceListEl.appendChild(row);
@@ -994,6 +1001,11 @@ async function openSecurityCameras(record, opts = {}) {
     addNotification("warn", "Runtime unavailable", "Open constitute-account to hydrate the shared runtime first.");
     return;
   }
+  const launch = serviceLaunchPosture(record);
+  if (launch.state !== "ready") {
+    addNotification("warn", "Service not actionable", launch.reason || "Service registry posture is not ready.");
+    return;
+  }
   const url = buildManagedSurfaceUrl("constitute-nvr-ui", opts);
   window.open(url, "_blank", "noopener,noreferrer");
   const label = String(record?.label || record?.deviceLabel || record?.displayName || "runtime directory").trim();
@@ -1003,6 +1015,11 @@ async function openSecurityCameras(record, opts = {}) {
 async function openLogging(record) {
   if (!runtimeReady) {
     addNotification("warn", "Runtime unavailable", "Open constitute-account to hydrate the shared runtime first.");
+    return;
+  }
+  const launch = serviceLaunchPosture(record);
+  if (launch.state !== "ready") {
+    addNotification("warn", "Service not actionable", launch.reason || "Service registry posture is not ready.");
     return;
   }
   const url = buildManagedSurfaceUrl("constitute-logging-ui");
