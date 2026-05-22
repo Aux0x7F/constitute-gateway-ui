@@ -1,5 +1,7 @@
 import {
   deriveRuntimeMaterializationPosture,
+  prepareRuntimeHostFabricPosture,
+  prepareRuntimeTargetPosture,
   preparedServiceRegistry,
   projectionPostureSummary,
 } from "constitute-ui";
@@ -324,6 +326,8 @@ export function prepareRuntimeSnapshotModel(snapshot, options = {}) {
     materializationBudget: options.materializationBudget,
     consumerFloor: options.consumerFloor,
   });
+  const target = prepareRuntimeTargetPosture(snapshot || {}, options);
+  const fabric = prepareRuntimeHostFabricPosture(snapshot || {}, options);
   return {
     records,
     serviceCatalog: {
@@ -336,6 +340,8 @@ export function prepareRuntimeSnapshotModel(snapshot, options = {}) {
       hostFabricReadyCount: fabricReadyCount,
       hostFabricBlockedCount: fabricBlockedCount,
     },
+    target,
+    fabric,
     edge: prepareSwarmEdgeStatus(snapshot),
     projection: prepareProjectionStatus(snapshot),
     materialization,
@@ -347,6 +353,8 @@ export function runtimeStatusRows(snapshot, prepared, records, fallbackBuildId =
   const projection = normalizeObject(prepared?.projection);
   const materialization = normalizeObject(prepared?.materialization);
   const serviceCatalog = normalizeObject(prepared?.serviceCatalog);
+  const target = normalizeObject(prepared?.target);
+  const fabric = normalizeObject(prepared?.fabric);
   const resource = normalizeObject(snapshot?.resource);
   const retention = normalizeObject(snapshot?.retention);
   const resourceReason = postureReason(resource);
@@ -364,6 +372,16 @@ export function runtimeStatusRows(snapshot, prepared, records, fallbackBuildId =
       label: "Host fabric",
       value: `${Number(serviceCatalog.hostFabricReadyCount || 0)} ready / ${Number(serviceCatalog.hostFabricBlockedCount || 0)} blocked`,
       tone: Number(serviceCatalog.hostFabricBlockedCount || 0) === 0 && Number(serviceCatalog.hostFabricReadyCount || 0) > 0 ? "good" : "warn",
+    },
+    {
+      label: "Contract target",
+      value: [postureState(target), shortRef(target.targetRef)].filter(Boolean).join(" / "),
+      tone: target.blocked === true ? "bad" : (target.ready === true ? "good" : "warn"),
+    },
+    {
+      label: "Fabric plan",
+      value: [postureState(fabric), shortRef(fabric.planId)].filter(Boolean).join(" / "),
+      tone: fabric.blocked === true ? "bad" : (fabric.ready === true ? "good" : "warn"),
     },
     {
       label: "Swarm edge",

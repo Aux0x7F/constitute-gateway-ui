@@ -8,6 +8,7 @@ import {
   runtimeStatusRows,
   serviceLaunchPosture,
 } from "../src/runtime-model.js";
+import { FABRIC, SWARM } from "constitute-protocol";
 
 test("runtime model uses retained service catalog records", () => {
   const snapshot = {
@@ -174,6 +175,68 @@ test("runtime model surfaces swarm edge queue reject and projection repair statu
     value: "releaseRequired / retention blockers active",
     tone: "warn",
   });
+});
+
+test("runtime model consumes shared target and fabric read-model posture", () => {
+  const snapshot = {
+    buildId: "runtime-test",
+    updatedAt: Date.now(),
+    targetSource: {
+      kind: "runtime.contract-target.source",
+      contractTargets: [{
+        kind: SWARM.RECORD_KIND.CONTRACT_TARGET,
+        targetRef: "contract-target:desktop-windows-dev:msa-transition",
+        contractRef: "app:constitution-runtime-target@msa-transition",
+        profileRef: "target-profile:desktop-dev",
+        platformRef: "platform:windows-desktop",
+        state: FABRIC.CONTRACT_TARGET_STATE.DEGRADED,
+        compatibilityState: FABRIC.CONTRACT_TARGET_COMPATIBILITY_STATE.DEGRADED,
+        modifierRefs: ["modifier:dev"],
+        branchRefs: ["branch:0x/msa-transition"],
+        capabilitySlotRefs: ["slot:runtime", "slot:native-client"],
+        missingSlotRefs: ["slot:native-client"],
+        proofProfileRefs: ["proof-profile:surface-landscape"],
+        evidenceRefs: ["evidence:runtime:target-source"],
+        blockedReasons: ["nativeClientNotPresentOnDesktopDevTarget"],
+        targetAudience: "operator",
+        issuedAt: 1778720000000,
+        expiresAt: 1778720060000,
+      }],
+      targetRegistryPostures: [{
+        kind: SWARM.RECORD_KIND.CONTRACT_TARGET_REGISTRY_POSTURE,
+        registryRef: "contract-target-registry:desktop-windows-dev:msa-transition",
+        targetRef: "contract-target:desktop-windows-dev:msa-transition",
+        contractRef: "app:constitution-runtime-target@msa-transition",
+        state: FABRIC.CONTRACT_TARGET_REGISTRY_STATE.DEGRADED,
+        slotPostures: [{
+          slotRef: "slot:runtime",
+          state: FABRIC.CONTRACT_TARGET_SLOT_STATE.AVAILABLE,
+          platformFitState: FABRIC.CONTRACT_TARGET_PLATFORM_FIT_STATE.COMPATIBLE,
+          candidateFulfillmentRefs: ["runtime:runtime-test"],
+          selectedFulfillmentRef: "runtime:runtime-test",
+        }, {
+          slotRef: "slot:native-client",
+          state: FABRIC.CONTRACT_TARGET_SLOT_STATE.MISSING,
+          platformFitState: FABRIC.CONTRACT_TARGET_PLATFORM_FIT_STATE.UNKNOWN,
+          blockedReasons: ["nativeClientNotPresentOnDesktopDevTarget"],
+        }],
+        candidateFulfillmentRefs: ["runtime:runtime-test"],
+        proofRequirementRefs: ["proof-requirement:surface-landscape"],
+        evidenceRefs: ["evidence:runtime:target-registry"],
+        blockedReasons: ["nativeClientNotPresentOnDesktopDevTarget"],
+        observedAt: 1778720000100,
+        expiresAt: 1778720060000,
+      }],
+    },
+  };
+
+  const prepared = prepareRuntimeSnapshotModel(snapshot);
+  const rows = runtimeStatusRows(snapshot, prepared, prepared.records, "runtime-fallback");
+
+  assert.equal(prepared.target.targetRef, "contract-target:desktop-windows-dev:msa-transition");
+  assert.equal(prepared.target.state, "degraded");
+  assert.equal(rows.some((row) => row.label === "Contract target" && row.tone === "warn"), true);
+  assert.equal(rows.some((row) => row.label === "Fabric plan" && row.value.includes("pending")), true);
 });
 
 test("active field state can survive a projection snapshot render", () => {
