@@ -6,7 +6,9 @@ import {
   prepareSwarmEdgeStatus,
   restoreActiveFieldState,
   runtimeStatusRows,
+  serviceLaunchPosture,
 } from "../src/runtime-model.js";
+import { FABRIC, SWARM } from "constitute-protocol";
 
 test("runtime model uses retained service catalog records", () => {
   const snapshot = {
@@ -31,6 +33,11 @@ test("runtime model uses retained service catalog records", () => {
           hostGatewayPk: "gateway-1",
           health: { status: "online", events: 42, producers: 2, storageStatus: "ok" },
           surface: { summary: "retained logging surface" },
+          hostFabric: {
+            state: "ready",
+            associationHandoffRef: "handoff:gateway:gateway-1:initial-owner",
+            blockedReasons: [],
+          },
         }],
       },
       services: [{
@@ -46,11 +53,47 @@ test("runtime model uses retained service catalog records", () => {
   assert.equal(prepared.serviceCatalog.source, "serviceRegistry");
   assert.equal(prepared.serviceCatalog.state, "ready");
   assert.equal(prepared.serviceCatalog.claimCount, 1);
+  assert.equal(prepared.serviceCatalog.hostFabricReadyCount, 1);
+  assert.equal(prepared.serviceCatalog.hostFabricBlockedCount, 0);
   assert.equal(prepared.records.some((record) => record.role === "gateway"), true);
   const logging = prepared.records.find((record) => record.service === "logging");
   assert.equal(logging.__source, "serviceRegistry");
   assert.equal(logging.status, "online");
+  assert.equal(logging.hostFabric.state, "ready");
   assert.equal(logging.facts.health.events, 42);
+  assert.equal(serviceLaunchPosture(logging).state, "ready");
+});
+
+test("service launch posture blocks non-registry and legacy fallback records", () => {
+  assert.deepEqual(serviceLaunchPosture({
+    service: "nvr",
+    __source: "browserStorageCache",
+    hostFabric: { state: "ready", blockedReasons: [] },
+  }), {
+    state: "blocked",
+    reason: "service is projected from browserStorageCache, not service registry",
+    label: "blocked / service is projected from browserStorageCache, not service registry",
+  });
+
+  assert.deepEqual(serviceLaunchPosture({
+    service: "nvr",
+    __source: "serviceRegistry",
+    hostFabric: { state: "ready", blockedReasons: [] },
+    legacyPathFallback: {
+      state: "legacyPathFallback",
+      reason: "retained cache selected service context",
+    },
+  }), {
+    state: "blocked",
+    reason: "retained cache selected service context",
+    label: "blocked / retained cache selected service context",
+  });
+
+  assert.equal(serviceLaunchPosture({
+    service: "nvr",
+    __source: "serviceRegistry",
+    hostFabric: { state: "blocked", blockedReasons: ["association missing"] },
+  }).reason, "association missing");
 });
 
 test("runtime model surfaces swarm edge queue reject and projection repair status", () => {
@@ -120,6 +163,7 @@ test("runtime model surfaces swarm edge queue reject and projection repair statu
     tone: "warn",
   });
   assert.equal(rows.find((row) => row.label === "Service catalog").value, "0 services / missing");
+  assert.equal(rows.find((row) => row.label === "Host fabric").value, "0 ready / 0 blocked");
   assert.equal(rows.find((row) => row.label === "Projection sync").value, "1 retained / completeEnough 1");
   assert.deepEqual(rows.find((row) => row.label === "Resource posture"), {
     label: "Resource posture",
@@ -131,6 +175,68 @@ test("runtime model surfaces swarm edge queue reject and projection repair statu
     value: "releaseRequired / retention blockers active",
     tone: "warn",
   });
+});
+
+test("runtime model consumes shared target and fabric read-model posture", () => {
+  const snapshot = {
+    buildId: "runtime-test",
+    updatedAt: Date.now(),
+    targetSource: {
+      kind: "runtime.contract-target.source",
+      contractTargets: [{
+        kind: SWARM.RECORD_KIND.CONTRACT_TARGET,
+        targetRef: "contract-target:desktop-windows-dev:msa-transition",
+        contractRef: "app:constitution-runtime-target@msa-transition",
+        profileRef: "target-profile:desktop-dev",
+        platformRef: "platform:windows-desktop",
+        state: FABRIC.CONTRACT_TARGET_STATE.DEGRADED,
+        compatibilityState: FABRIC.CONTRACT_TARGET_COMPATIBILITY_STATE.DEGRADED,
+        modifierRefs: ["modifier:dev"],
+        branchRefs: ["branch:0x/msa-transition"],
+        capabilitySlotRefs: ["slot:runtime", "slot:native-client"],
+        missingSlotRefs: ["slot:native-client"],
+        proofProfileRefs: ["proof-profile:surface-landscape"],
+        evidenceRefs: ["evidence:runtime:target-source"],
+        blockedReasons: ["nativeClientNotPresentOnDesktopDevTarget"],
+        targetAudience: "operator",
+        issuedAt: 1778720000000,
+        expiresAt: 1778720060000,
+      }],
+      targetRegistryPostures: [{
+        kind: SWARM.RECORD_KIND.CONTRACT_TARGET_REGISTRY_POSTURE,
+        registryRef: "contract-target-registry:desktop-windows-dev:msa-transition",
+        targetRef: "contract-target:desktop-windows-dev:msa-transition",
+        contractRef: "app:constitution-runtime-target@msa-transition",
+        state: FABRIC.CONTRACT_TARGET_REGISTRY_STATE.DEGRADED,
+        slotPostures: [{
+          slotRef: "slot:runtime",
+          state: FABRIC.CONTRACT_TARGET_SLOT_STATE.AVAILABLE,
+          platformFitState: FABRIC.CONTRACT_TARGET_PLATFORM_FIT_STATE.COMPATIBLE,
+          candidateFulfillmentRefs: ["runtime:runtime-test"],
+          selectedFulfillmentRef: "runtime:runtime-test",
+        }, {
+          slotRef: "slot:native-client",
+          state: FABRIC.CONTRACT_TARGET_SLOT_STATE.MISSING,
+          platformFitState: FABRIC.CONTRACT_TARGET_PLATFORM_FIT_STATE.UNKNOWN,
+          blockedReasons: ["nativeClientNotPresentOnDesktopDevTarget"],
+        }],
+        candidateFulfillmentRefs: ["runtime:runtime-test"],
+        proofRequirementRefs: ["proof-requirement:surface-landscape"],
+        evidenceRefs: ["evidence:runtime:target-registry"],
+        blockedReasons: ["nativeClientNotPresentOnDesktopDevTarget"],
+        observedAt: 1778720000100,
+        expiresAt: 1778720060000,
+      }],
+    },
+  };
+
+  const prepared = prepareRuntimeSnapshotModel(snapshot);
+  const rows = runtimeStatusRows(snapshot, prepared, prepared.records, "runtime-fallback");
+
+  assert.equal(prepared.target.targetRef, "contract-target:desktop-windows-dev:msa-transition");
+  assert.equal(prepared.target.state, "degraded");
+  assert.equal(rows.some((row) => row.label === "Contract target" && row.tone === "warn"), true);
+  assert.equal(rows.some((row) => row.label === "Fabric plan" && row.value.includes("pending")), true);
 });
 
 test("active field state can survive a projection snapshot render", () => {

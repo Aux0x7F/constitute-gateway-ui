@@ -1,5 +1,9 @@
 import {
   deriveRuntimeMaterializationPosture,
+  prepareServiceHostFabricPosture,
+  prepareServiceLaunchPosture,
+  prepareRuntimeHostFabricPosture,
+  prepareRuntimeTargetPosture,
   preparedServiceRegistry,
   projectionPostureSummary,
 } from "constitute-ui";
@@ -47,6 +51,22 @@ function postureState(value, fallback = "unknown") {
 function postureReason(value) {
   const posture = normalizeObject(value);
   return String(posture.cleanupReason || posture.reason || posture.blockedReason || "").trim();
+}
+
+export function serviceLaunchPosture(record) {
+  const posture = prepareServiceLaunchPosture(record);
+  return {
+    state: posture.state,
+    reason: posture.reason,
+    label: posture.label,
+  };
+}
+
+function shortRef(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (raw.length <= 18) return raw;
+  return `${raw.slice(0, 10)}...${raw.slice(-5)}`;
 }
 
 function serviceRecordKey(record) {
@@ -154,6 +174,7 @@ function serviceCatalogRecords(snapshot) {
       hostGatewayPk: String(entry.hostGatewayPk || entry.host_gateway_pk || "").trim(),
       label: label || service,
       status: String(health.status || entry.status || "").trim(),
+      hostFabric: prepareServiceHostFabricPosture(entry.hostFabric),
       facts: {
         ...(normalizeObject(entry.facts)),
         health,
@@ -251,10 +272,15 @@ export function prepareProjectionStatus(snapshot) {
 export function prepareRuntimeSnapshotModel(snapshot, options = {}) {
   const records = normalizeRuntimeRecords(snapshot, options);
   const registry = preparedServiceRegistry(snapshot || {});
+  const serviceRecords = records.filter((record) => normalizeRole(record.service));
+  const fabricReadyCount = serviceRecords.filter((record) => normalizeObject(record.hostFabric).state === "ready").length;
+  const fabricBlockedCount = serviceRecords.filter((record) => normalizedArray(normalizeObject(record.hostFabric).blockedReasons).length > 0).length;
   const materialization = deriveRuntimeMaterializationPosture(snapshot || {}, {
     materializationBudget: options.materializationBudget,
     consumerFloor: options.consumerFloor,
   });
+  const target = prepareRuntimeTargetPosture(snapshot || {}, options);
+  const fabric = prepareRuntimeHostFabricPosture(snapshot || {}, options);
   return {
     records,
     serviceCatalog: {
@@ -264,7 +290,11 @@ export function prepareRuntimeSnapshotModel(snapshot, options = {}) {
       state: registry.state,
       claimCount: registry.claimCount,
       entryCount: registry.entryCount,
+      hostFabricReadyCount: fabricReadyCount,
+      hostFabricBlockedCount: fabricBlockedCount,
     },
+    target,
+    fabric,
     edge: prepareSwarmEdgeStatus(snapshot),
     projection: prepareProjectionStatus(snapshot),
     materialization,
@@ -276,6 +306,8 @@ export function runtimeStatusRows(snapshot, prepared, records, fallbackBuildId =
   const projection = normalizeObject(prepared?.projection);
   const materialization = normalizeObject(prepared?.materialization);
   const serviceCatalog = normalizeObject(prepared?.serviceCatalog);
+  const target = normalizeObject(prepared?.target);
+  const fabric = normalizeObject(prepared?.fabric);
   const resource = normalizeObject(snapshot?.resource);
   const retention = normalizeObject(snapshot?.retention);
   const resourceReason = postureReason(resource);
@@ -288,6 +320,21 @@ export function runtimeStatusRows(snapshot, prepared, records, fallbackBuildId =
       label: "Service catalog",
       value: `${Number(serviceCatalog.serviceCount || 0)} services / ${serviceCatalog.state || "unknown"}`,
       tone: Number(serviceCatalog.serviceCount || 0) > 0 ? "good" : "warn",
+    },
+    {
+      label: "Host fabric",
+      value: `${Number(serviceCatalog.hostFabricReadyCount || 0)} ready / ${Number(serviceCatalog.hostFabricBlockedCount || 0)} blocked`,
+      tone: Number(serviceCatalog.hostFabricBlockedCount || 0) === 0 && Number(serviceCatalog.hostFabricReadyCount || 0) > 0 ? "good" : "warn",
+    },
+    {
+      label: "Contract target",
+      value: [postureState(target), shortRef(target.targetRef)].filter(Boolean).join(" / "),
+      tone: target.blocked === true ? "bad" : (target.ready === true ? "good" : "warn"),
+    },
+    {
+      label: "Fabric plan",
+      value: [postureState(fabric), shortRef(fabric.planId)].filter(Boolean).join(" / "),
+      tone: fabric.blocked === true ? "bad" : (fabric.ready === true ? "good" : "warn"),
     },
     {
       label: "Swarm edge",
